@@ -1,0 +1,89 @@
+const navigation = [
+  { label: "Overview", icon: "⌂" },
+  { label: "My tasks", icon: "✓", badge: "4" },
+  { label: "Calendar", icon: "□" },
+];
+
+const projects = [
+  { label: "Internship Portfolio", color: "bg-indigo-500", active: true },
+  { label: "CEDT Coursework", color: "bg-emerald-500" },
+  { label: "Personal", color: "bg-amber-500" },
+];
+
+export function Sidebar() {
+  return (
+    <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white px-5 py-7 lg:flex lg:flex-col">
+      <div className="mb-10 flex items-center gap-3 px-2">
+        <div className="grid size-11 place-items-center rounded-2xl bg-indigo-600 font-black text-white shadow-lg shadow-indigo-200">
+          T
+        </div>
+        <div>
+          <p className="text-lg font-bold tracking-tight text-slate-900">Taskflow</p>
+          <p className="text-xs text-slate-400">Student workspace</p>
+        </div>
+      </div>
+
+      <nav aria-label="Main navigation" className="space-y-1">
+        {navigation.map((item) => (
+          <button
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+            key={item.label}
+            type="button"
+          >
+            <span className="grid size-6 place-items-center text-base text-slate-400">
+              {item.icon}
+            </span>
+            <span>{item.label}</span>
+            {item.badge ? (
+              <span className="ml-auto rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-600">
+                {item.badge}
+              </span>
+            ) : null}
+          </button>
+        ))}
+      </nav>
+
+      <div className="mt-9">
+        <div className="mb-3 flex items-center justify-between px-3">
+          <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+            Projects
+          </p>
+          <button
+            aria-label="Add project"
+            className="text-lg leading-none text-slate-400 transition hover:text-indigo-600"
+            type="button"
+          >
+            +
+          </button>
+        </div>
+
+        <div className="space-y-1">
+          {projects.map((project) => (
+            <button
+              className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
+                project.active
+                  ? "bg-indigo-50 text-indigo-700"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+              key={project.label}
+              type="button"
+            >
+              <span className={`size-2.5 rounded-full ${project.color}`} />
+              <span className="truncate">{project.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-auto rounded-2xl bg-slate-950 p-4 text-white">
+        <p className="text-sm font-semibold">Build your streak</p>
+        <p className="mt-1 text-xs leading-5 text-slate-400">
+          Complete one task today to keep your momentum.
+        </p>
+        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-700">
+          <div className="h-full w-2/3 rounded-full bg-indigo-400" />
+        </div>
+      </div>
+    </aside>
+  );
+}
