@@ -1,6 +1,13 @@
 export type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
 export type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
 
+export type TaskAssignee = {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+};
+
 export type Task = {
   id: string;
   code: string;
@@ -10,7 +17,7 @@ export type Task = {
   priority: TaskPriority;
   dueDate?: string;
   tag: string;
-  assigneeInitials: string;
+  assignees: TaskAssignee[];
   commentsCount: number;
 };
 

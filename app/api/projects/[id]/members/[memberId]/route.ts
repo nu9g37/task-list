@@ -83,6 +83,11 @@ export async function DELETE(request: Request, { params }: MemberRouteContext) {
     return Response.json({ error: "A project must have at least one owner." }, { status: 400 });
   }
 
-  await prisma.projectMember.delete({ where: { id: memberId } });
+  await prisma.$transaction([
+    prisma.taskAssignee.deleteMany({
+      where: { userId: target.userId, task: { projectId } },
+    }),
+    prisma.projectMember.delete({ where: { id: memberId } }),
+  ]);
   return new Response(null, { status: 204 });
 }

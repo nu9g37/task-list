@@ -20,9 +20,15 @@ const assigneeStyles = [
   "bg-violet-100 text-violet-700",
 ];
 
-function getAssigneeStyle(initials: string) {
-  const total = [...initials].reduce((sum, character) => sum + character.charCodeAt(0), 0);
+function getAssigneeStyle(value: string) {
+  const total = [...value].reduce((sum, character) => sum + character.charCodeAt(0), 0);
   return assigneeStyles[total % assigneeStyles.length];
+}
+
+function getInitials(name: string, email: string) {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length > 1) return `${words[0][0]}${words.at(-1)?.[0]}`.toUpperCase();
+  return (words[0]?.slice(0, 2) || email.slice(0, 2)).toUpperCase();
 }
 
 function formatDueDate(value: string) {
@@ -170,11 +176,29 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
               {task.commentsCount}
             </span>
           ) : null}
-          <span
-            className={`grid size-8 place-items-center rounded-full text-[10px] font-bold ${getAssigneeStyle(task.assigneeInitials)}`}
-          >
-            {task.assigneeInitials}
-          </span>
+          {task.assignees.length > 0 ? (
+            <div className="flex -space-x-2" aria-label="Task assignees">
+              {task.assignees.slice(0, 3).map((assignee) => {
+                const assigneeInitials = getInitials(assignee.name, assignee.email);
+                return (
+                  <span
+                    className={`grid size-8 place-items-center rounded-full border-2 border-white text-[10px] font-bold ${getAssigneeStyle(assignee.email)}`}
+                    key={assignee.id}
+                    title={`${assignee.name} (${assignee.email})`}
+                  >
+                    {assigneeInitials}
+                  </span>
+                );
+              })}
+              {task.assignees.length > 3 ? (
+                <span className="grid size-8 place-items-center rounded-full border-2 border-white bg-slate-100 text-[10px] font-bold text-slate-500">
+                  +{task.assignees.length - 3}
+                </span>
+              ) : null}
+            </div>
+          ) : (
+            <span className="text-xs font-medium text-slate-400">No one</span>
+          )}
         </div>
       </div>
     </article>

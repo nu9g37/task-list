@@ -4,6 +4,21 @@ import { getRequestSession } from "@/lib/auth-session";
 
 export const runtime = "nodejs";
 
+const assigneeInclude = {
+  assignees: {
+    include: {
+      user: { select: { id: true, name: true, email: true, image: true } },
+    },
+  },
+} as const;
+
+function serializeTask<
+  T extends { assignees: { user: { id: string; name: string; email: string; image: string | null } }[] },
+>(task: T) {
+  const { assignees, ...data } = task;
+  return { ...data, assignees: assignees.map((assignment) => assignment.user) };
+}
+
 type TaskRouteContext = {
   params: Promise<{ id: string }>;
 };
@@ -37,12 +52,36 @@ export async function PATCH(request: Request, { params }: TaskRouteContext) {
     return Response.json({ error: "Task not found." }, { status: 404 });
   }
 
+  const { assigneeIds, ...taskData } = parsed.data;
+  if (assigneeIds) {
+    const memberCount = await prisma.projectMember.count({
+      where: { projectId: existingTask.projectId, userId: { in: assigneeIds } },
+    });
+    if (memberCount !== assigneeIds.length) {
+      return Response.json(
+        { error: "Every assignee must be a member of this project." },
+        { status: 400 },
+      );
+    }
+  }
+
   const task = await prisma.task.update({
     where: { id },
-    data: parsed.data,
+    data: {
+      ...taskData,
+      ...(assigneeIds
+        ? {
+            assignees: {
+              deleteMany: {},
+              create: assigneeIds.map((userId) => ({ userId })),
+            },
+          }
+        : {}),
+    },
+    include: assigneeInclude,
   });
 
-  return Response.json(task);
+  return Response.json(serializeTask(task));
 }
 
 export async function DELETE(request: Request, { params }: TaskRouteContext) {

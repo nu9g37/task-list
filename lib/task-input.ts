@@ -13,7 +13,7 @@ export type TaskInput = {
   priority?: TaskPriority;
   dueDate?: Date | null;
   tag?: string;
-  assigneeInitials?: string;
+  assigneeIds?: string[];
 };
 
 type ParseResult =
@@ -82,11 +82,14 @@ export function parseTaskInput(value: unknown, requireTitle: boolean): ParseResu
     data.tag = body.tag.trim().slice(0, 40);
   }
 
-  if (body.assigneeInitials !== undefined) {
-    if (typeof body.assigneeInitials !== "string" || !body.assigneeInitials.trim()) {
-      return { success: false, error: "Assignee initials are required." };
+  if (body.assigneeIds !== undefined) {
+    if (
+      !Array.isArray(body.assigneeIds) ||
+      body.assigneeIds.some((id) => typeof id !== "string" || !id)
+    ) {
+      return { success: false, error: "Assignees must be a list of user IDs." };
     }
-    data.assigneeInitials = body.assigneeInitials.trim().toUpperCase().slice(0, 3);
+    data.assigneeIds = [...new Set(body.assigneeIds as string[])];
   }
 
   return { success: true, data };

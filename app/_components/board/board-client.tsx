@@ -10,6 +10,7 @@ import { authClient } from "@/lib/auth-client";
 import { ProjectDialog, type ProjectDraft } from "@/app/_components/project-dialog";
 import type { Project } from "@/app/_types/project";
 import { ProjectMembersDialog } from "@/app/_components/project-members-dialog";
+import { TaskListView } from "./task-list-view";
 
 type BoardClientProps = {
   initialTasks: Task[];
@@ -25,6 +26,8 @@ type DialogState =
   | { kind: "create"; status: TaskStatus }
   | { kind: "edit"; task: Task }
   | null;
+
+type ProjectView = "board" | "list";
 
 function toTask(value: TaskApiResponse): Task {
   return { ...value, dueDate: value.dueDate ?? undefined };
@@ -53,6 +56,7 @@ export function BoardClient({
   const [projects, setProjects] = useState(initialProjects);
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
   const [query, setQuery] = useState("");
+  const [projectView, setProjectView] = useState<ProjectView>("board");
   const [dialog, setDialog] = useState<DialogState>(null);
   const [saving, setSaving] = useState(false);
   const [dialogError, setDialogError] = useState<string>();
@@ -70,7 +74,13 @@ export function BoardClient({
     const search = query.trim().toLowerCase();
     if (!search) return tasks;
     return tasks.filter((task) =>
-      [task.code, task.title, task.description, task.tag, task.assigneeInitials]
+      [
+        task.code,
+        task.title,
+        task.description,
+        task.tag,
+        ...task.assignees.flatMap((assignee) => [assignee.name, assignee.email]),
+      ]
         .join(" ")
         .toLowerCase()
         .includes(search),
@@ -357,25 +367,58 @@ export function BoardClient({
             <>
               <div className="mb-6 flex items-center justify-between border-b border-slate-200">
                 <nav aria-label="Project views" className="flex gap-7">
-                  <button className="border-b-2 border-indigo-600 px-1 pb-4 text-sm font-semibold text-indigo-600" type="button">
+                  <button
+                    aria-current={projectView === "board" ? "page" : undefined}
+                    className={`px-1 pb-4 text-sm transition ${
+                      projectView === "board"
+                        ? "border-b-2 border-indigo-600 font-semibold text-indigo-600"
+                        : "font-medium text-slate-400 hover:text-slate-700"
+                    }`}
+                    onClick={() => setProjectView("board")}
+                    type="button"
+                  >
                     Board
                   </button>
-                  <button className="px-1 pb-4 text-sm font-medium text-slate-400" type="button">List</button>
-                  <button className="px-1 pb-4 text-sm font-medium text-slate-400" type="button">Timeline</button>
+                  <button
+                    aria-current={projectView === "list" ? "page" : undefined}
+                    className={`px-1 pb-4 text-sm transition ${
+                      projectView === "list"
+                        ? "border-b-2 border-indigo-600 font-semibold text-indigo-600"
+                        : "font-medium text-slate-400 hover:text-slate-700"
+                    }`}
+                    onClick={() => setProjectView("list")}
+                    type="button"
+                  >
+                    List
+                  </button>
+                  <button className="cursor-not-allowed px-1 pb-4 text-sm font-medium text-slate-300" disabled type="button">
+                    Timeline
+                  </button>
                 </nav>
               </div>
 
-              <div className={`grid items-start gap-5 overflow-x-auto pb-6 transition md:grid-cols-3 ${loadingProject ? "opacity-50" : ""}`}>
-                {boardColumns.map((column) => (
-                  <BoardColumn
-                    column={column}
-                    key={column.status}
+              <div className={`transition ${loadingProject ? "opacity-50" : ""}`}>
+                {projectView === "board" ? (
+                  <div className="grid items-start gap-5 overflow-x-auto pb-6 md:grid-cols-3">
+                    {boardColumns.map((column) => (
+                      <BoardColumn
+                        column={column}
+                        key={column.status}
+                        onAdd={openCreate}
+                        onDelete={deleteTask}
+                        onEdit={openEdit}
+                        tasks={visibleTasks.filter((task) => task.status === column.status)}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <TaskListView
                     onAdd={openCreate}
                     onDelete={deleteTask}
                     onEdit={openEdit}
-                    tasks={visibleTasks.filter((task) => task.status === column.status)}
+                    tasks={visibleTasks}
                   />
-                ))}
+                )}
               </div>
             </>
           ) : null}
@@ -385,12 +428,12 @@ export function BoardClient({
       {dialog ? (
         <TaskDialog
           busy={saving}
-          defaultAssigneeInitials={userInitials}
           error={dialogError}
           initialStatus={dialog.kind === "create" ? dialog.status : dialog.task.status}
           key={dialog.kind === "edit" ? dialog.task.id : `new-${dialog.status}`}
           onClose={() => (saving ? undefined : setDialog(null))}
           onSubmit={saveTask}
+          projectId={selectedProjectId!}
           task={dialog.kind === "edit" ? dialog.task : undefined}
         />
       ) : null}

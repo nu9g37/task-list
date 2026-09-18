@@ -19,6 +19,13 @@ export default async function Home() {
   const project = projectRecords[0];
   const records = await prisma.task.findMany({
     where: { projectId: project?.id ?? "" },
+    include: {
+      assignees: {
+        include: {
+          user: { select: { id: true, name: true, email: true, image: true } },
+        },
+      },
+    },
     orderBy: [{ position: "asc" }, { createdAt: "asc" }],
   });
 
@@ -31,7 +38,7 @@ export default async function Home() {
     priority: task.priority,
     dueDate: task.dueDate?.toISOString(),
     tag: task.tag,
-    assigneeInitials: task.assigneeInitials,
+    assignees: task.assignees.map((assignment) => assignment.user),
     commentsCount: task.commentsCount,
   }));
 

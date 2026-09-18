@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import type { Task, TaskPriority, TaskStatus } from "@/app/_types/task";
+import type { ProjectMember, ProjectMembersResponse } from "@/app/_types/project-member";
 
 export type TaskDraft = {
   title: string;
@@ -10,13 +11,13 @@ export type TaskDraft = {
   priority: TaskPriority;
   dueDate: string;
   tag: string;
-  assigneeInitials: string;
+  assigneeIds: string[];
 };
 
 type TaskDialogProps = {
   task?: Task;
+  projectId: string;
   initialStatus: TaskStatus;
-  defaultAssigneeInitials: string;
   busy: boolean;
   error?: string;
   onClose: () => void;
@@ -25,13 +26,17 @@ type TaskDialogProps = {
 
 export function TaskDialog({
   task,
+  projectId,
   initialStatus,
-  defaultAssigneeInitials,
   busy,
   error,
   onClose,
   onSubmit,
 }: TaskDialogProps) {
+  const assigneeMenuRef = useRef<HTMLDivElement>(null);
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(true);
+  const [assigneeMenuOpen, setAssigneeMenuOpen] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>({
     title: task?.title ?? "",
     description: task?.description ?? "",
@@ -39,8 +44,61 @@ export function TaskDialog({
     priority: task?.priority ?? "MEDIUM",
     dueDate: task?.dueDate?.slice(0, 10) ?? "",
     tag: task?.tag ?? "General",
-    assigneeInitials: task?.assigneeInitials ?? defaultAssigneeInitials,
+    assigneeIds: task?.assignees.map((assignee) => assignee.id) ?? [],
   });
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadMembers() {
+      try {
+        const response = await fetch(`/api/projects/${projectId}/members`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const data = (await response.json()) as ProjectMembersResponse;
+        setMembers(data.members);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        console.error("Unable to load project members.", error);
+      } finally {
+        if (!controller.signal.aborted) setMembersLoading(false);
+      }
+    }
+
+    loadMembers();
+    return () => controller.abort();
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!assigneeMenuOpen) return;
+
+    function closeMenu(event: PointerEvent) {
+      if (!assigneeMenuRef.current?.contains(event.target as Node)) {
+        setAssigneeMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", closeMenu);
+    return () => document.removeEventListener("pointerdown", closeMenu);
+  }, [assigneeMenuOpen]);
+
+  const selectedMembers = members.filter((member) => draft.assigneeIds.includes(member.user.id));
+  const assigneeLabel =
+    selectedMembers.length === 0
+      ? "No one"
+      : selectedMembers.length === 1
+        ? selectedMembers[0].user.name
+        : `${selectedMembers.length} people`;
+
+  function toggleAssignee(userId: string) {
+    update(
+      "assigneeIds",
+      draft.assigneeIds.includes(userId)
+        ? draft.assigneeIds.filter((id) => id !== userId)
+        : [...draft.assigneeIds, userId],
+    );
+  }
 
   function update<Field extends keyof TaskDraft>(field: Field, value: TaskDraft[Field]) {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -153,16 +211,77 @@ export function TaskDialog({
             </label>
           </div>
 
-          <label className="block text-sm font-semibold text-slate-700">
-            Assignee initials
-            <input
-              className="mt-2 w-28 rounded-xl border border-slate-200 px-3.5 py-3 font-normal uppercase outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
-              maxLength={3}
-              onChange={(event) => update("assigneeInitials", event.target.value)}
-              required
-              value={draft.assigneeInitials}
-            />
-          </label>
+          <div className="relative" ref={assigneeMenuRef}>
+            <label className="block text-sm font-semibold text-slate-700" id="assignee-label">
+              Assignee
+            </label>
+            <button
+              aria-expanded={assigneeMenuOpen}
+              aria-haspopup="listbox"
+              aria-labelledby="assignee-label"
+              className="mt-2 flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-left text-sm font-normal text-slate-700 outline-none transition hover:border-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+              onClick={() => setAssigneeMenuOpen((open) => !open)}
+              type="button"
+            >
+              <span className={selectedMembers.length === 0 ? "text-slate-400" : ""}>
+                {membersLoading ? "Loading members..." : assigneeLabel}
+              </span>
+              <span className="text-xs text-slate-400">⌄</span>
+            </button>
+
+            {assigneeMenuOpen ? (
+              <div
+                aria-labelledby="assignee-label"
+                className="absolute z-20 mt-2 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
+                role="listbox"
+              >
+                <button
+                  aria-selected={draft.assigneeIds.length === 0}
+                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
+                    draft.assigneeIds.length === 0
+                      ? "bg-indigo-50 font-semibold text-indigo-700"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                  onClick={() => update("assigneeIds", [])}
+                  role="option"
+                  type="button"
+                >
+                  <span className="grid size-5 place-items-center rounded border border-slate-300 text-xs">
+                    {draft.assigneeIds.length === 0 ? "✓" : ""}
+                  </span>
+                  No one
+                </button>
+
+                {members.map((member) => {
+                  const selected = draft.assigneeIds.includes(member.user.id);
+                  return (
+                    <button
+                      aria-selected={selected}
+                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
+                        selected
+                          ? "bg-indigo-50 font-semibold text-indigo-700"
+                          : "text-slate-600 hover:bg-slate-50"
+                      }`}
+                      key={member.id}
+                      onClick={() => toggleAssignee(member.user.id)}
+                      role="option"
+                      type="button"
+                    >
+                      <span className="grid size-5 place-items-center rounded border border-slate-300 text-xs">
+                        {selected ? "✓" : ""}
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block truncate">{member.user.name}</span>
+                        <span className="block truncate text-xs font-normal text-slate-400">
+                          {member.user.email}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
         </div>
 
         {error ? (

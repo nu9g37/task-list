@@ -5,6 +5,29 @@ import { getRequestSession } from "@/lib/auth-session";
 
 export const runtime = "nodejs";
 
+const assigneeInclude = {
+  assignees: {
+    include: {
+      user: { select: { id: true, name: true, email: true, image: true } },
+    },
+  },
+} as const;
+
+function serializeTask<
+  T extends { assignees: { user: { id: string; name: string; email: string; image: string | null } }[] },
+>(task: T) {
+  const { assignees, ...data } = task;
+  return { ...data, assignees: assignees.map((assignment) => assignment.user) };
+}
+
+async function areProjectMembers(projectId: string, userIds: string[]) {
+  if (userIds.length === 0) return true;
+  const count = await prisma.projectMember.count({
+    where: { projectId, userId: { in: userIds } },
+  });
+  return count === userIds.length;
+}
+
 async function getAccessibleProject(userId: string, projectId: string | null) {
   return prisma.project.findFirst({
     where: {
@@ -32,10 +55,11 @@ export async function GET(request: Request) {
   const project = requestedProject;
   const tasks = await prisma.task.findMany({
     where: { projectId: project.id },
+    include: assigneeInclude,
     orderBy: [{ position: "asc" }, { createdAt: "asc" }],
   });
 
-  return Response.json(tasks);
+  return Response.json(tasks.map(serializeTask));
 }
 
 export async function POST(request: Request) {
@@ -65,6 +89,14 @@ export async function POST(request: Request) {
     return Response.json({ error: parsed.error }, { status: 400 });
   }
 
+  const assigneeIds = parsed.data.assigneeIds ?? [];
+  if (!(await areProjectMembers(project.id, assigneeIds))) {
+    return Response.json(
+      { error: "Every assignee must be a member of this project." },
+      { status: 400 },
+    );
+  }
+
   const status = parsed.data.status ?? "TODO";
   const lastTask = await prisma.task.findFirst({
     where: { status, projectId: project.id },
@@ -81,13 +113,15 @@ export async function POST(request: Request) {
       priority: parsed.data.priority ?? "MEDIUM",
       dueDate: parsed.data.dueDate,
       tag: parsed.data.tag ?? "General",
-      assigneeInitials: parsed.data.assigneeInitials ?? "KP",
       projectId: project.id,
       creatorId: session.user.id,
-      assigneeId: session.user.id,
+      assignees: assigneeIds.length
+        ? { create: assigneeIds.map((userId) => ({ userId })) }
+        : undefined,
       position: (lastTask?.position ?? -1) + 1,
     },
+    include: assigneeInclude,
   });
 
-  return Response.json(task, { status: 201 });
+  return Response.json(serializeTask(task), { status: 201 });
 }
