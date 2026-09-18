@@ -326,6 +326,14 @@ export function BoardClient({
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                className="flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700"
+                onClick={() => openCreate("TODO")}
+                type="button"
+              >
+                <span className="text-lg leading-none">+</span>{" "}
+                {selectedProjectId ? "Add task" : "Create a project first"}
+              </button>
               {selectedProject ? (
                 <button
                   className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600"
@@ -335,14 +343,6 @@ export function BoardClient({
                   Manage members
                 </button>
               ) : null}
-              <button
-                className="flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700"
-                onClick={() => openCreate("TODO")}
-                type="button"
-              >
-                <span className="text-lg leading-none">+</span>{" "}
-                {selectedProjectId ? "Add task" : "Create a project first"}
-              </button>
             </div>
           </div>
 
