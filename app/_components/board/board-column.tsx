@@ -1,4 +1,4 @@
-import type { BoardColumnData, Task } from "./mock-data";
+import type { BoardColumnData, Task } from "@/app/_types/task";
 import { TaskCard } from "./task-card";
 
 type BoardColumnProps = {

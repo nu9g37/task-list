@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import type { Task, TaskPriority, TaskStatus } from "./mock-data";
+import type { Task, TaskPriority, TaskStatus } from "@/app/_types/task";
 
 export type TaskDraft = {
   title: string;

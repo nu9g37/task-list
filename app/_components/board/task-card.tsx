@@ -1,4 +1,4 @@
-import type { Task, TaskPriority } from "./mock-data";
+import type { Task, TaskPriority } from "@/app/_types/task";
 
 const priorityStyles: Record<TaskPriority, string> = {
   LOW: "bg-slate-100 text-slate-600",

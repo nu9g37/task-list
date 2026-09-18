@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { BoardColumn } from "./board-column";
-import { boardColumns, type Task, type TaskStatus } from "./mock-data";
-import { Sidebar } from "./sidebar";
+import { boardColumns, type Task, type TaskStatus } from "@/app/_types/task";
+import { Sidebar } from "@/app/_components/sidebar";
 import { TaskDialog, type TaskDraft } from "./task-dialog";
 
 type BoardClientProps = { initialTasks: Task[] };

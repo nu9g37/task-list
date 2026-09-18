@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { BoardClient } from "./ui/board-client";
-import type { Task } from "./ui/mock-data";
+import { BoardClient } from "@/app/_components/board/board-client";
+import type { Task } from "@/app/_types/task";
 
 export const dynamic = "force-dynamic";
 
