@@ -165,6 +165,26 @@ export function BoardClient({
     }
   }
 
+  async function changeTaskStatus(task: Task, status: TaskStatus) {
+    setPageError(undefined);
+
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) throw new Error(await readApiError(response));
+
+      const savedTask = toTask((await response.json()) as TaskApiResponse);
+      setTasks((current) =>
+        current.map((item) => (item.id === savedTask.id ? savedTask : item)),
+      );
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Unable to update task status.");
+    }
+  }
+
   async function selectProject(projectId: string) {
     if (projectId === selectedProjectId || loadingProject) return;
     setLoadingProject(true);
@@ -413,9 +433,9 @@ export function BoardClient({
                   </div>
                 ) : (
                   <TaskListView
-                    onAdd={openCreate}
                     onDelete={deleteTask}
                     onEdit={openEdit}
+                    onStatusChange={changeTaskStatus}
                     tasks={visibleTasks}
                   />
                 )}

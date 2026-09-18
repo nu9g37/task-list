@@ -182,11 +182,20 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
                 const assigneeInitials = getInitials(assignee.name, assignee.email);
                 return (
                   <span
-                    className={`grid size-8 place-items-center rounded-full border-2 border-white text-[10px] font-bold ${getAssigneeStyle(assignee.email)}`}
+                    className={`grid size-8 place-items-center overflow-hidden rounded-full border-2 border-white text-[10px] font-bold ${getAssigneeStyle(assignee.email)}`}
                     key={assignee.id}
                     title={`${assignee.name} (${assignee.email})`}
                   >
-                    {assigneeInitials}
+                    {assignee.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        alt={assignee.name}
+                        className="size-full object-cover"
+                        src={assignee.image}
+                      />
+                    ) : (
+                      assigneeInitials
+                    )}
                   </span>
                 );
               })}
