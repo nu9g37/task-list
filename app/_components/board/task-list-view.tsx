@@ -6,6 +6,7 @@ import {
   type TaskPriority,
   type TaskStatus,
 } from "@/app/_types/task";
+import type { ProjectColor } from "@/app/_types/project";
 
 type TaskListViewProps = {
   tasks: Task[];
@@ -32,6 +33,14 @@ const statusLabels: Record<TaskStatus, string> = {
   TODO: "To do",
   IN_PROGRESS: "In progress",
   DONE: "Done",
+};
+
+const projectStyles: Record<ProjectColor, string> = {
+  indigo: "bg-indigo-50 text-indigo-700",
+  emerald: "bg-emerald-50 text-emerald-700",
+  amber: "bg-amber-50 text-amber-700",
+  rose: "bg-rose-50 text-rose-700",
+  sky: "bg-sky-50 text-sky-700",
 };
 
 function formatDueDate(value?: string) {
@@ -148,6 +157,9 @@ export function TaskListView({
                     <div className="min-w-0 text-left">
                       <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                         {task.code} · {task.tag}
+                      </span>
+                      <span className={`mt-1.5 inline-block max-w-40 truncate rounded-md px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal ${projectStyles[task.project.color]}`}>
+                        {task.project.name}
                       </span>
                       <span className="mt-1 block truncate text-sm font-semibold text-slate-800">
                         {task.title}

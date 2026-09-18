@@ -2,6 +2,7 @@ import type { BoardColumnData, Task } from "@/app/_types/task";
 import { TaskCard } from "./task-card";
 
 type BoardColumnProps = {
+  canAdd?: boolean;
   column: BoardColumnData;
   tasks: Task[];
   onAdd: (status: Task["status"]) => void;
@@ -10,6 +11,7 @@ type BoardColumnProps = {
 };
 
 export function BoardColumn({
+  canAdd = true,
   column,
   tasks,
   onAdd,
@@ -26,14 +28,16 @@ export function BoardColumn({
             {tasks.length}
           </span>
         </div>
-        <button
-          aria-label={`Add task to ${column.title}`}
-          className="grid size-8 place-items-center rounded-xl text-lg text-slate-400 transition hover:bg-white hover:text-indigo-600 hover:shadow-sm"
-          onClick={() => onAdd(column.status)}
-          type="button"
-        >
-          +
-        </button>
+        {canAdd ? (
+          <button
+            aria-label={`Add task to ${column.title}`}
+            className="grid size-8 place-items-center rounded-xl text-lg text-slate-400 transition hover:bg-white hover:text-indigo-600 hover:shadow-sm"
+            onClick={() => onAdd(column.status)}
+            type="button"
+          >
+            +
+          </button>
+        ) : null}
       </div>
 
       <div className="space-y-3">
@@ -47,14 +51,16 @@ export function BoardColumn({
         ) : null}
       </div>
 
-      <button
-        className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 px-4 py-3 text-sm font-medium text-slate-400 transition hover:border-indigo-300 hover:bg-white hover:text-indigo-600"
-        onClick={() => onAdd(column.status)}
-        type="button"
-      >
-        <span className="text-lg leading-none">+</span>
-        Add task
-      </button>
+      {canAdd ? (
+        <button
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 px-4 py-3 text-sm font-medium text-slate-400 transition hover:border-indigo-300 hover:bg-white hover:text-indigo-600"
+          onClick={() => onAdd(column.status)}
+          type="button"
+        >
+          <span className="text-lg leading-none">+</span>
+          Add task
+        </button>
+      ) : null}
     </section>
   );
 }

@@ -19,6 +19,11 @@ export type Task = {
   tag: string;
   assignees: TaskAssignee[];
   commentsCount: number;
+  project: {
+    id: string;
+    name: string;
+    color: "indigo" | "emerald" | "amber" | "rose" | "sky";
+  };
 };
 
 export type BoardColumnData = {

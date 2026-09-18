@@ -1,12 +1,14 @@
 import type { Project, ProjectColor } from "@/app/_types/project";
 
 type SidebarProps = {
+  activeView: "project" | "my-tasks";
   projects: Project[];
   selectedProjectId: string | null;
   taskCount: number;
   onAddProject: () => void;
   onDeleteProject: (project: Project) => void;
   onEditProject: (project: Project) => void;
+  onMyTasks: () => void;
   onSelectProject: (projectId: string) => void;
 };
 
@@ -19,18 +21,20 @@ const projectDotColors: Record<ProjectColor, string> = {
 };
 
 export function Sidebar({
+  activeView,
   projects,
   selectedProjectId,
   taskCount,
   onAddProject,
   onDeleteProject,
   onEditProject,
+  onMyTasks,
   onSelectProject,
 }: SidebarProps) {
   const navigation = [
-    { label: "Overview", icon: "⌂" },
-    { label: "My tasks", icon: "✓", badge: String(taskCount) },
-    { label: "Calendar", icon: "□" },
+    { label: "Overview", icon: "⌂", enabled: false },
+    { label: "My tasks", icon: "✓", badge: String(taskCount), enabled: true },
+    { label: "Calendar", icon: "□", enabled: false },
   ];
 
   return (
@@ -48,8 +52,15 @@ export function Sidebar({
       <nav aria-label="Main navigation" className="space-y-1">
         {navigation.map((item) => (
           <button
-            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-900"
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
+              item.label === "My tasks" && activeView === "my-tasks"
+                ? "bg-indigo-50 text-indigo-700"
+                : item.enabled
+                  ? "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  : "cursor-default text-slate-400"
+            }`}
             key={item.label}
+            onClick={item.label === "My tasks" ? onMyTasks : undefined}
             type="button"
           >
             <span className="grid size-6 place-items-center text-base text-slate-400">
@@ -82,7 +93,7 @@ export function Sidebar({
 
         <div className="space-y-1">
           {projects.map((project) => {
-            const selected = project.id === selectedProjectId;
+            const selected = activeView === "project" && project.id === selectedProjectId;
             return (
               <div className="group relative" key={project.id}>
                 <button

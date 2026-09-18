@@ -4,12 +4,13 @@ import { getRequestSession } from "@/lib/auth-session";
 
 export const runtime = "nodejs";
 
-const assigneeInclude = {
+const taskInclude = {
   assignees: {
     include: {
       user: { select: { id: true, name: true, email: true, image: true } },
     },
   },
+  project: { select: { id: true, name: true, color: true } },
 } as const;
 
 function serializeTask<
@@ -78,7 +79,7 @@ export async function PATCH(request: Request, { params }: TaskRouteContext) {
           }
         : {}),
     },
-    include: assigneeInclude,
+    include: taskInclude,
   });
 
   return Response.json(serializeTask(task));

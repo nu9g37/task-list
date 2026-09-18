@@ -25,6 +25,7 @@ export default async function Home() {
           user: { select: { id: true, name: true, email: true, image: true } },
         },
       },
+      project: { select: { id: true, name: true, color: true } },
     },
     orderBy: [{ position: "asc" }, { createdAt: "asc" }],
   });
@@ -40,6 +41,10 @@ export default async function Home() {
     tag: task.tag,
     assignees: task.assignees.map((assignment) => assignment.user),
     commentsCount: task.commentsCount,
+    project: {
+      ...task.project,
+      color: task.project.color as ProjectColor,
+    },
   }));
 
   const projects: Project[] = projectRecords.map((item) => ({
@@ -56,7 +61,14 @@ export default async function Home() {
       initialProjectId={project?.id ?? null}
       initialProjects={projects}
       userEmail={session.user.email}
+      userId={session.user.id}
       userName={session.user.name}
+      initialMyTaskCount={await prisma.taskAssignee.count({
+        where: {
+          userId: session.user.id,
+          task: { project: { members: { some: { userId: session.user.id } } } },
+        },
+      })}
     />
   );
 }

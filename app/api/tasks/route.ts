@@ -5,12 +5,13 @@ import { getRequestSession } from "@/lib/auth-session";
 
 export const runtime = "nodejs";
 
-const assigneeInclude = {
+const taskInclude = {
   assignees: {
     include: {
       user: { select: { id: true, name: true, email: true, image: true } },
     },
   },
+  project: { select: { id: true, name: true, color: true } },
 } as const;
 
 function serializeTask<
@@ -43,6 +44,19 @@ export async function GET(request: Request) {
   if (!session) return Response.json({ error: "Unauthorized." }, { status: 401 });
 
   const url = new URL(request.url);
+  const assignedToMe = url.searchParams.get("assignedToMe") === "true";
+  if (assignedToMe) {
+    const tasks = await prisma.task.findMany({
+      where: {
+        assignees: { some: { userId: session.user.id } },
+        project: { members: { some: { userId: session.user.id } } },
+      },
+      include: taskInclude,
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+    });
+    return Response.json(tasks.map(serializeTask));
+  }
+
   const requestedProjectId = url.searchParams.get("projectId");
   const requestedProject = await getAccessibleProject(
     session.user.id,
@@ -55,7 +69,7 @@ export async function GET(request: Request) {
   const project = requestedProject;
   const tasks = await prisma.task.findMany({
     where: { projectId: project.id },
-    include: assigneeInclude,
+    include: taskInclude,
     orderBy: [{ position: "asc" }, { createdAt: "asc" }],
   });
 
@@ -120,7 +134,7 @@ export async function POST(request: Request) {
         : undefined,
       position: (lastTask?.position ?? -1) + 1,
     },
-    include: assigneeInclude,
+    include: taskInclude,
   });
 
   return Response.json(serializeTask(task), { status: 201 });

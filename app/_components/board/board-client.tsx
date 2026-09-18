@@ -16,7 +16,9 @@ type BoardClientProps = {
   initialTasks: Task[];
   initialProjectId: string | null;
   initialProjects: Project[];
+  initialMyTaskCount: number;
   userEmail: string;
+  userId: string;
   userName: string;
 };
 
@@ -28,6 +30,7 @@ type DialogState =
   | null;
 
 type ProjectView = "board" | "list";
+type WorkspaceView = "project" | "my-tasks";
 
 function toTask(value: TaskApiResponse): Task {
   return { ...value, dueDate: value.dueDate ?? undefined };
@@ -48,13 +51,17 @@ export function BoardClient({
   initialTasks,
   initialProjectId,
   initialProjects,
+  initialMyTaskCount,
   userEmail,
+  userId,
   userName,
 }: BoardClientProps) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initialTasks);
   const [projects, setProjects] = useState(initialProjects);
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("project");
+  const [myTaskCount, setMyTaskCount] = useState(initialMyTaskCount);
   const [query, setQuery] = useState("");
   const [projectView, setProjectView] = useState<ProjectView>("board");
   const [dialog, setDialog] = useState<DialogState>(null);
@@ -79,6 +86,7 @@ export function BoardClient({
         task.title,
         task.description,
         task.tag,
+        task.project.name,
         ...task.assignees.flatMap((assignee) => [assignee.name, assignee.email]),
       ]
         .join(" ")
@@ -123,11 +131,21 @@ export function BoardClient({
       if (!response.ok) throw new Error(await readApiError(response));
 
       const savedTask = toTask((await response.json()) as TaskApiResponse);
-      setTasks((current) =>
-        editing
+      const wasAssignedToMe = editing
+        ? dialog.task.assignees.some((assignee) => assignee.id === userId)
+        : false;
+      const isAssignedToMe = savedTask.assignees.some((assignee) => assignee.id === userId);
+      setTasks((current) => {
+        if (workspaceView === "my-tasks" && !isAssignedToMe) {
+          return current.filter((task) => task.id !== savedTask.id);
+        }
+        return editing
           ? current.map((task) => (task.id === savedTask.id ? savedTask : task))
-          : [...current, savedTask],
-      );
+          : [...current, savedTask];
+      });
+      if (wasAssignedToMe !== isAssignedToMe) {
+        setMyTaskCount((current) => Math.max(0, current + (isAssignedToMe ? 1 : -1)));
+      }
       if (!editing) {
         setProjects((current) =>
           current.map((project) =>
@@ -153,9 +171,12 @@ export function BoardClient({
       const response = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
       if (!response.ok) throw new Error(await readApiError(response));
       setTasks((current) => current.filter((item) => item.id !== task.id));
+      if (task.assignees.some((assignee) => assignee.id === userId)) {
+        setMyTaskCount((current) => Math.max(0, current - 1));
+      }
       setProjects((current) =>
         current.map((project) =>
-          project.id === selectedProjectId
+          project.id === task.project.id
             ? { ...project, taskCount: Math.max(0, project.taskCount - 1) }
             : project,
         ),
@@ -186,7 +207,7 @@ export function BoardClient({
   }
 
   async function selectProject(projectId: string) {
-    if (projectId === selectedProjectId || loadingProject) return;
+    if ((projectId === selectedProjectId && workspaceView === "project") || loadingProject) return;
     setLoadingProject(true);
     setPageError(undefined);
 
@@ -195,11 +216,33 @@ export function BoardClient({
       if (!response.ok) throw new Error(await readApiError(response));
       const projectTasks = ((await response.json()) as TaskApiResponse[]).map(toTask);
       setSelectedProjectId(projectId);
+      setWorkspaceView("project");
       setTasks(projectTasks);
       setQuery("");
       setMembersDialogOpen(false);
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to load project.");
+    } finally {
+      setLoadingProject(false);
+    }
+  }
+
+  async function openMyTasks() {
+    if (workspaceView === "my-tasks" || loadingProject) return;
+    setLoadingProject(true);
+    setPageError(undefined);
+
+    try {
+      const response = await fetch("/api/tasks?assignedToMe=true");
+      if (!response.ok) throw new Error(await readApiError(response));
+      const assignedTasks = ((await response.json()) as TaskApiResponse[]).map(toTask);
+      setTasks(assignedTasks);
+      setMyTaskCount(assignedTasks.length);
+      setWorkspaceView("my-tasks");
+      setQuery("");
+      setMembersDialogOpen(false);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Unable to load your tasks.");
     } finally {
       setLoadingProject(false);
     }
@@ -225,8 +268,25 @@ export function BoardClient({
           ? current.map((project) => (project.id === savedProject.id ? savedProject : project))
           : [...current, savedProject],
       );
+      if (editing) {
+        setTasks((current) =>
+          current.map((task) =>
+            task.project.id === savedProject.id
+              ? {
+                  ...task,
+                  project: {
+                    id: savedProject.id,
+                    name: savedProject.name,
+                    color: savedProject.color,
+                  },
+                }
+              : task,
+          ),
+        );
+      }
       if (!editing) {
         setSelectedProjectId(savedProject.id);
+        setWorkspaceView("project");
         setTasks([]);
         setQuery("");
       }
@@ -250,7 +310,14 @@ export function BoardClient({
 
       const remaining = projects.filter((item) => item.id !== project.id);
       setProjects(remaining);
-      if (project.id === selectedProjectId) {
+      if (workspaceView === "my-tasks") {
+        const removedAssignedCount = tasks.filter(
+          (task) => task.project.id === project.id &&
+            task.assignees.some((assignee) => assignee.id === userId),
+        ).length;
+        setTasks((current) => current.filter((task) => task.project.id !== project.id));
+        setMyTaskCount((current) => Math.max(0, current - removedAssignedCount));
+      } else if (project.id === selectedProjectId) {
         if (remaining[0]) {
           setSelectedProjectId(remaining[0].id);
           const tasksResponse = await fetch(
@@ -287,6 +354,7 @@ export function BoardClient({
     <main className="min-h-screen bg-[#f7f8fc] text-slate-950">
       <div className="mx-auto flex min-h-screen max-w-[1800px]">
         <Sidebar
+          activeView={workspaceView}
           onAddProject={() => {
             setProjectError(undefined);
             setProjectDialog("create");
@@ -296,10 +364,11 @@ export function BoardClient({
             setProjectError(undefined);
             setProjectDialog(project);
           }}
+          onMyTasks={openMyTasks}
           onSelectProject={selectProject}
           projects={projects}
           selectedProjectId={selectedProjectId}
-          taskCount={tasks.length}
+          taskCount={myTaskCount}
         />
 
         <section className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
@@ -342,36 +411,48 @@ export function BoardClient({
           <div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
             <div>
               <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-400">
-                <span>Projects</span><span>/</span><span className="text-slate-600">{selectedProject?.name ?? "No project"}</span>
+                {workspaceView === "my-tasks" ? (
+                  <span className="text-slate-600">My tasks</span>
+                ) : (
+                  <><span>Projects</span><span>/</span><span className="text-slate-600">{selectedProject?.name ?? "No project"}</span></>
+                )}
               </div>
               <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
-                {selectedProject?.name ?? "Create your first project"}
+                {workspaceView === "my-tasks"
+                  ? "My tasks"
+                  : selectedProject?.name ?? "Create your first project"}
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base">
-                {selectedProject?.description ||
-                  (selectedProject
-                    ? "Plan, organize, and finish your work."
-                    : "Use the + next to Projects to create a workspace for your tasks.")}
+                {workspaceView === "my-tasks"
+                  ? "Tasks assigned to you across all projects."
+                  : selectedProject?.description ||
+                    (selectedProject
+                      ? "Plan, organize, and finish your work."
+                      : "Use the + next to Projects to create a workspace for your tasks.")}
               </p>
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row">
-              <button
-                className="flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700"
-                onClick={() => openCreate("TODO")}
-                type="button"
-              >
-                <span className="text-lg leading-none">+</span>{" "}
-                {selectedProjectId ? "Add task" : "Create a project first"}
-              </button>
-              {selectedProject ? (
-                <button
-                  className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600"
-                  onClick={() => setMembersDialogOpen(true)}
-                  type="button"
-                >
-                  Manage members
-                </button>
+              {workspaceView === "project" ? (
+                <>
+                  <button
+                    className="flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700"
+                    onClick={() => openCreate("TODO")}
+                    type="button"
+                  >
+                    <span className="text-lg leading-none">+</span>{" "}
+                    {selectedProjectId ? "Add task" : "Create a project first"}
+                  </button>
+                  {selectedProject ? (
+                    <button
+                      className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600"
+                      onClick={() => setMembersDialogOpen(true)}
+                      type="button"
+                    >
+                      Manage members
+                    </button>
+                  ) : null}
+                </>
               ) : null}
             </div>
           </div>
@@ -383,7 +464,7 @@ export function BoardClient({
             </div>
           ) : null}
 
-          {selectedProject ? (
+          {workspaceView === "my-tasks" || selectedProject ? (
             <>
               <div className="mb-6 flex items-center justify-between border-b border-slate-200">
                 <nav aria-label="Project views" className="flex gap-7">
@@ -422,6 +503,7 @@ export function BoardClient({
                   <div className="grid items-start gap-5 overflow-x-auto pb-6 md:grid-cols-3">
                     {boardColumns.map((column) => (
                       <BoardColumn
+                        canAdd={workspaceView === "project"}
                         column={column}
                         key={column.status}
                         onAdd={openCreate}
@@ -453,7 +535,7 @@ export function BoardClient({
           key={dialog.kind === "edit" ? dialog.task.id : `new-${dialog.status}`}
           onClose={() => (saving ? undefined : setDialog(null))}
           onSubmit={saveTask}
-          projectId={selectedProjectId!}
+          projectId={dialog.kind === "edit" ? dialog.task.project.id : selectedProjectId!}
           task={dialog.kind === "edit" ? dialog.task : undefined}
         />
       ) : null}
