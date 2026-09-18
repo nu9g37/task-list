@@ -1,11 +1,24 @@
 import { prisma } from "@/lib/prisma";
 import { BoardClient } from "@/app/_components/board/board-client";
 import type { Task } from "@/app/_types/task";
+import type { Project, ProjectColor } from "@/app/_types/project";
+import { getCurrentSession } from "@/lib/auth-session";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
+  const session = await getCurrentSession();
+  if (!session) redirect("/sign-in");
+
+  const projectRecords = await prisma.project.findMany({
+    where: { members: { some: { userId: session.user.id } } },
+    include: { _count: { select: { tasks: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  const project = projectRecords[0];
   const records = await prisma.task.findMany({
+    where: { projectId: project?.id ?? "" },
     orderBy: [{ position: "asc" }, { createdAt: "asc" }],
   });
 
@@ -22,5 +35,21 @@ export default async function Home() {
     commentsCount: task.commentsCount,
   }));
 
-  return <BoardClient initialTasks={tasks} />;
+  const projects: Project[] = projectRecords.map((item) => ({
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    color: item.color as ProjectColor,
+    taskCount: item._count.tasks,
+  }));
+
+  return (
+    <BoardClient
+      initialTasks={tasks}
+      initialProjectId={project?.id ?? null}
+      initialProjects={projects}
+      userEmail={session.user.email}
+      userName={session.user.name}
+    />
+  );
 }

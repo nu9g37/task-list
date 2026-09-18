@@ -1,11 +1,37 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { parseTaskInput } from "@/lib/task-input";
+import { getRequestSession } from "@/lib/auth-session";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+async function getAccessibleProject(userId: string, projectId: string | null) {
+  return prisma.project.findFirst({
+    where: {
+      ...(projectId ? { id: projectId } : {}),
+      members: { some: { userId } },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+export async function GET(request: Request) {
+  const session = await getRequestSession(request);
+  if (!session) return Response.json({ error: "Unauthorized." }, { status: 401 });
+
+  const url = new URL(request.url);
+  const requestedProjectId = url.searchParams.get("projectId");
+  const requestedProject = await getAccessibleProject(
+    session.user.id,
+    requestedProjectId,
+  );
+  if (requestedProjectId && !requestedProject) {
+    return Response.json({ error: "Project not found." }, { status: 404 });
+  }
+  if (!requestedProject) return Response.json([]);
+  const project = requestedProject;
   const tasks = await prisma.task.findMany({
+    where: { projectId: project.id },
     orderBy: [{ position: "asc" }, { createdAt: "asc" }],
   });
 
@@ -13,6 +39,19 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const session = await getRequestSession(request);
+  if (!session) return Response.json({ error: "Unauthorized." }, { status: 401 });
+
+  const url = new URL(request.url);
+  const requestedProjectId = url.searchParams.get("projectId");
+  if (!requestedProjectId) {
+    return Response.json({ error: "Project is required." }, { status: 400 });
+  }
+  const requestedProject = await getAccessibleProject(session.user.id, requestedProjectId);
+  if (!requestedProject) {
+    return Response.json({ error: "Project not found." }, { status: 404 });
+  }
+  const project = requestedProject;
   let body: unknown;
 
   try {
@@ -28,7 +67,7 @@ export async function POST(request: Request) {
 
   const status = parsed.data.status ?? "TODO";
   const lastTask = await prisma.task.findFirst({
-    where: { status },
+    where: { status, projectId: project.id },
     orderBy: { position: "desc" },
     select: { position: true },
   });
@@ -43,6 +82,9 @@ export async function POST(request: Request) {
       dueDate: parsed.data.dueDate,
       tag: parsed.data.tag ?? "General",
       assigneeInitials: parsed.data.assigneeInitials ?? "KP",
+      projectId: project.id,
+      creatorId: session.user.id,
+      assigneeId: session.user.id,
       position: (lastTask?.position ?? -1) + 1,
     },
   });

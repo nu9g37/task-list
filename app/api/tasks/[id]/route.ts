@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { parseTaskInput } from "@/lib/task-input";
+import { getRequestSession } from "@/lib/auth-session";
 
 export const runtime = "nodejs";
 
@@ -8,6 +9,9 @@ type TaskRouteContext = {
 };
 
 export async function PATCH(request: Request, { params }: TaskRouteContext) {
+  const session = await getRequestSession(request);
+  if (!session) return Response.json({ error: "Unauthorized." }, { status: 401 });
+
   const { id } = await params;
   let body: unknown;
 
@@ -26,7 +30,9 @@ export async function PATCH(request: Request, { params }: TaskRouteContext) {
     return Response.json({ error: "No task fields were provided." }, { status: 400 });
   }
 
-  const existingTask = await prisma.task.findUnique({ where: { id } });
+  const existingTask = await prisma.task.findFirst({
+    where: { id, project: { members: { some: { userId: session.user.id } } } },
+  });
   if (!existingTask) {
     return Response.json({ error: "Task not found." }, { status: 404 });
   }
@@ -39,10 +45,13 @@ export async function PATCH(request: Request, { params }: TaskRouteContext) {
   return Response.json(task);
 }
 
-export async function DELETE(_request: Request, { params }: TaskRouteContext) {
+export async function DELETE(request: Request, { params }: TaskRouteContext) {
+  const session = await getRequestSession(request);
+  if (!session) return Response.json({ error: "Unauthorized." }, { status: 401 });
+
   const { id } = await params;
-  const existingTask = await prisma.task.findUnique({
-    where: { id },
+  const existingTask = await prisma.task.findFirst({
+    where: { id, project: { members: { some: { userId: session.user.id } } } },
     select: { id: true },
   });
 

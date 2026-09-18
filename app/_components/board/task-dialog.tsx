@@ -16,6 +16,7 @@ export type TaskDraft = {
 type TaskDialogProps = {
   task?: Task;
   initialStatus: TaskStatus;
+  defaultAssigneeInitials: string;
   busy: boolean;
   error?: string;
   onClose: () => void;
@@ -25,6 +26,7 @@ type TaskDialogProps = {
 export function TaskDialog({
   task,
   initialStatus,
+  defaultAssigneeInitials,
   busy,
   error,
   onClose,
@@ -37,7 +39,7 @@ export function TaskDialog({
     priority: task?.priority ?? "MEDIUM",
     dueDate: task?.dueDate?.slice(0, 10) ?? "",
     tag: task?.tag ?? "General",
-    assigneeInitials: task?.assigneeInitials ?? "KP",
+    assigneeInitials: task?.assigneeInitials ?? defaultAssigneeInitials,
   });
 
   function update<Field extends keyof TaskDraft>(field: Field, value: TaskDraft[Field]) {

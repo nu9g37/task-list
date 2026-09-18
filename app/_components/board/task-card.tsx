@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { Task, TaskPriority } from "@/app/_types/task";
 
 const priorityStyles: Record<TaskPriority, string> = {
@@ -38,7 +39,33 @@ function formatDueDate(value: string) {
 }
 
 export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const dueDate = task.dueDate ? formatDueDate(task.dueDate) : undefined;
+
+  useEffect(() => {
+    if (!isMenuOpen) return;
+
+    function closeMenu(event: PointerEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    }
+
+    function closeMenuOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", closeMenu);
+    document.addEventListener("keydown", closeMenuOnEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", closeMenu);
+      document.removeEventListener("keydown", closeMenuOnEscape);
+    };
+  }, [isMenuOpen]);
 
   return (
     <article className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md">
@@ -46,23 +73,54 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
         <span className="rounded-lg bg-indigo-50 px-2.5 py-1 text-[11px] font-semibold text-indigo-600">
           {task.tag}
         </span>
-        <div className="flex items-center gap-1">
+        <div className="relative" ref={menuRef}>
           <button
-            aria-label={`Edit ${task.title}`}
-            className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-400 transition hover:bg-slate-100 hover:text-indigo-600"
-            onClick={() => onEdit(task)}
+            aria-expanded={isMenuOpen}
+            aria-haspopup="menu"
+            aria-label={`Actions for ${task.title}`}
+            className="grid size-8 place-items-center rounded-lg text-lg font-bold leading-none tracking-wider text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+            onClick={() => setIsMenuOpen((isOpen) => !isOpen)}
             type="button"
           >
-            Edit
+            <span aria-hidden="true" className="-translate-y-0.5">
+              ...
+            </span>
           </button>
-          <button
-            aria-label={`Delete ${task.title}`}
-            className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-300 transition hover:bg-rose-50 hover:text-rose-600"
-            onClick={() => onDelete(task)}
-            type="button"
+
+          <div
+            aria-label={`Actions for ${task.title}`}
+            className={`absolute right-0 top-9 z-10 w-32 origin-top-right rounded-xl border border-slate-200 bg-white p-1 shadow-lg transition ${
+              isMenuOpen
+                ? "visible scale-100 opacity-100"
+                : "invisible scale-95 opacity-0"
+            }`}
+            role="menu"
           >
-            Delete
-          </button>
+            <button
+              className="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-indigo-600"
+              onClick={() => {
+                setIsMenuOpen(false);
+                onEdit(task);
+              }}
+              role="menuitem"
+              tabIndex={isMenuOpen ? 0 : -1}
+              type="button"
+            >
+              Edit
+            </button>
+            <button
+              className="w-full rounded-lg px-3 py-2 text-left text-xs font-semibold text-rose-500 transition hover:bg-rose-50 hover:text-rose-600"
+              onClick={() => {
+                setIsMenuOpen(false);
+                onDelete(task);
+              }}
+              role="menuitem"
+              tabIndex={isMenuOpen ? 0 : -1}
+              type="button"
+            >
+              Delete
+            </button>
+          </div>
         </div>
       </div>
 
