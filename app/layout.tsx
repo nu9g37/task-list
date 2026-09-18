@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Taskflow",
+  title: "Tasklist",
   description: "A focused project workspace for students.",
 };
 

@@ -18,7 +18,7 @@ export function Sidebar() {
           T
         </div>
         <div>
-          <p className="text-lg font-bold tracking-tight text-slate-900">Taskflow</p>
+          <p className="text-lg font-bold tracking-tight text-slate-900">Tasklist</p>
           <p className="text-xs text-slate-400">Student workspace</p>
         </div>
       </div>

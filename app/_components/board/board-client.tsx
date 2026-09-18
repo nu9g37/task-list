@@ -106,7 +106,7 @@ export function BoardClient({ initialTasks }: BoardClientProps) {
               <div className="grid size-10 place-items-center rounded-2xl bg-indigo-600 text-sm font-black text-white shadow-lg shadow-indigo-200">
                 T
               </div>
-              <span className="font-bold tracking-tight">Task List</span>
+              <span className="font-bold tracking-tight">Tasklist</span>
             </div>
 
             <label className="hidden w-full max-w-md items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400 shadow-sm sm:flex">
@@ -135,7 +135,7 @@ export function BoardClient({ initialTasks }: BoardClientProps) {
                 Product Development
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base">
-                Plan, build, and ship the first version of Taskflow.
+                Plan, build, and ship the first version of Tasklist.
               </p>
             </div>
 
