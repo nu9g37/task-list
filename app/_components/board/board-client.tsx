@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BoardColumn } from "./board-column";
 import { boardColumns, type Task, type TaskAssignee, type TaskPriority, type TaskStatus } from "@/app/_types/task";
@@ -66,10 +66,13 @@ export function BoardClient({
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
   const [selectedPriority, setSelectedPriority] = useState<TaskPriority | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [filterPanelLeft, setFilterPanelLeft] = useState(0);
   const [projectMembers, setProjectMembers] = useState<TaskAssignee[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
   const [membersError, setMembersError] = useState<string>();
   const filterRef = useRef<HTMLDivElement>(null);
+  const filterPanelRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLElement>(null);
   const [projectView, setProjectView] = useState<ProjectView>("board");
   const [dialog, setDialog] = useState<DialogState>(null);
   const [saving, setSaving] = useState(false);
@@ -185,6 +188,25 @@ export function BoardClient({
       document.removeEventListener("pointerdown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
     };
+  }, [filterOpen]);
+
+  useLayoutEffect(() => {
+    if (!filterOpen) return;
+    function positionFilterPanel() {
+      const trigger = filterRef.current?.getBoundingClientRect();
+      const panel = filterPanelRef.current?.getBoundingClientRect();
+      const contentElement = contentRef.current;
+      if (!trigger || !panel || !contentElement) return;
+      const content = contentElement.getBoundingClientRect();
+      const contentStyle = window.getComputedStyle(contentElement);
+      const leftBoundary = Math.max(16, content.left + Number.parseFloat(contentStyle.paddingLeft));
+      const rightBoundary = Math.min(window.innerWidth - 16, content.right - Number.parseFloat(contentStyle.paddingRight)) - panel.width;
+      const panelLeft = Math.min(Math.max(trigger.left, leftBoundary), Math.max(leftBoundary, rightBoundary));
+      setFilterPanelLeft(panelLeft - trigger.left);
+    }
+    positionFilterPanel();
+    window.addEventListener("resize", positionFilterPanel);
+    return () => window.removeEventListener("resize", positionFilterPanel);
   }, [filterOpen]);
 
   useEffect(() => {
@@ -622,9 +644,11 @@ export function BoardClient({
       {filterOpen ? (
         <div
           aria-label="Task filters"
-          className="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-xl"
+          className="absolute top-[calc(100%+0.5rem)] z-30 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-xl"
           id="task-filter-panel"
+          ref={filterPanelRef}
           role="dialog"
+          style={{ left: filterPanelLeft }}
         >
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-bold text-slate-800">Filters</h2>
@@ -637,7 +661,7 @@ export function BoardClient({
               Clear filter
             </button>
           </div>
-          {workspaceView !== "my-tasks" ? (
+          {workspaceView === "project" ? (
             <fieldset>
               <legend className="mb-2 font-semibold text-slate-700">Assignee</legend>
               <div className="max-h-44 space-y-1 overflow-y-auto">
@@ -663,7 +687,7 @@ export function BoardClient({
               {membersError ? <p className="mt-2 text-xs text-rose-600">{membersError}</p> : null}
             </fieldset>
           ) : null}
-          <fieldset className={workspaceView !== "my-tasks" ? "mt-4 border-t border-slate-100 pt-4" : ""}>
+          <fieldset className={workspaceView === "project" ? "mt-4 border-t border-slate-100 pt-4" : ""}>
             <legend className="font-semibold text-slate-700">Priority</legend>
             <div className="mt-2 grid grid-cols-3 gap-2">
               {(["LOW", "MEDIUM", "HIGH"] as TaskPriority[]).map((priority) => (
@@ -715,7 +739,7 @@ export function BoardClient({
           onProfile={() => setProfileOpen(true)}
         />
 
-        <section className="min-w-0 flex-1 px-4 py-4 sm:px-6 sm:py-5 lg:min-h-0 lg:overflow-y-auto lg:overscroll-y-contain lg:px-10 lg:py-8">
+        <section className="min-w-0 flex-1 px-4 py-4 sm:px-6 sm:py-5 lg:min-h-0 lg:overflow-y-auto lg:overscroll-y-contain lg:px-10 lg:py-8" ref={contentRef}>
           <header className="mb-5 flex items-center justify-between gap-4 lg:hidden">
             <div className="flex items-center gap-3">
               <button

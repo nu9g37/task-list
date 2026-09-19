@@ -19,8 +19,23 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
+}
+
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: none;
+}
+
+.task-date-empty::-webkit-datetime-edit {
+  color: transparent;
+}
+
+.task-date-empty:focus::-webkit-datetime-edit {
+  color: inherit;
 }
 
 button {

@@ -49,7 +49,7 @@ export function TaskDialog({
     status: task?.status ?? initialStatus,
     priority: task?.priority ?? "MEDIUM",
     dueDate: task?.dueDate?.slice(0, 10) ?? "",
-    tag: task?.tag ?? "General",
+    tag: task?.tag ?? "",
     assigneeIds: task?.assignees.map((assignee) => assignee.id) ?? [],
   });
 
@@ -123,7 +123,7 @@ export function TaskDialog({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await onSubmit(draft);
+    await onSubmit({ ...draft, tag: draft.tag.trim() || "General" });
   }
 
   return (
@@ -179,11 +179,11 @@ export function TaskDialog({
             />
           </label>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm font-semibold text-slate-700">
+          <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <label className="block min-w-0 text-sm font-semibold text-slate-700">
               Status
               <select
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 font-normal outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+                className="mt-2 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3.5 py-3 font-normal outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
                 onChange={(event) => update("status", event.target.value as TaskStatus)}
                 value={draft.status}
               >
@@ -193,10 +193,10 @@ export function TaskDialog({
               </select>
             </label>
 
-            <label className="block text-sm font-semibold text-slate-700">
+            <label className="block min-w-0 text-sm font-semibold text-slate-700">
               Priority
               <select
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 font-normal outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+                className="mt-2 w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3.5 py-3 font-normal outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
                 onChange={(event) => update("priority", event.target.value as TaskPriority)}
                 value={draft.priority}
               >
@@ -206,23 +206,29 @@ export function TaskDialog({
               </select>
             </label>
 
-            <label className="block text-sm font-semibold text-slate-700">
+            <label className="block min-w-0 text-sm font-semibold text-slate-700">
               Due date
               <input
-                className="mt-2 w-full rounded-xl border border-slate-200 px-3.5 py-3 font-normal outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+                className={`mt-2 h-12 w-full min-w-0 cursor-pointer rounded-xl border border-slate-200 bg-white px-3.5 font-normal outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50 ${draft.dueDate ? "" : "task-date-empty"}`}
                 onChange={(event) => update("dueDate", event.target.value)}
+                onClick={(event) => {
+                  try {
+                    event.currentTarget.showPicker?.();
+                  } catch {
+                    // The native date input remains available when showPicker is unsupported.
+                  }
+                }}
                 type="date"
                 value={draft.dueDate}
               />
             </label>
 
-            <label className="block text-sm font-semibold text-slate-700">
+            <label className="block min-w-0 text-sm font-semibold text-slate-700">
               Tag
               <input
-                className="mt-2 w-full rounded-xl border border-slate-200 px-3.5 py-3 font-normal outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+                className="mt-2 h-12 w-full min-w-0 rounded-xl border border-slate-200 px-3.5 font-normal outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
                 maxLength={40}
                 onChange={(event) => update("tag", event.target.value)}
-                required
                 value={draft.tag}
               />
             </label>
@@ -236,7 +242,7 @@ export function TaskDialog({
               aria-controls="assignee-options"
               aria-expanded={assigneeMenuOpen}
               aria-label={`Assignee: ${assigneeSummary}`}
-              className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-left text-sm font-normal text-slate-700 outline-none transition hover:border-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+              className="mt-2 flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-left text-sm font-normal text-slate-700 outline-none transition hover:border-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
               onClick={() => setAssigneeMenuOpen((open) => !open)}
               type="button"
             >
@@ -259,7 +265,6 @@ export function TaskDialog({
                   {assigneeSummary}
                 </span>
               </span>
-              <span className="text-xs text-slate-400">⌄</span>
             </button>
 
             {assigneeMenuOpen ? (

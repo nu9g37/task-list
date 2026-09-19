@@ -130,7 +130,7 @@ export function TaskListView({
           Sort by
         </label>
         <select
-          className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+          className="h-11 rounded-2xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
           id="task-sort"
           onChange={(event) => setSortBy(event.target.value as SortOption)}
           value={sortBy}
@@ -144,7 +144,7 @@ export function TaskListView({
         {toolbarActions}
       </div>
 
-      <section className="overflow-visible rounded-2xl border border-slate-200 bg-white shadow-sm xl:overflow-x-auto">
+      <section className="overflow-visible rounded-2xl border border-slate-200 bg-white shadow-sm">
         {tasks.length > 0 ? (
           <div className="divide-y divide-slate-100 xl:min-w-[880px]">
             <div className="hidden grid-cols-[minmax(180px,1fr)_140px_110px_85px_170px_36px] items-center gap-5 bg-slate-50/80 px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400 xl:grid">
@@ -155,7 +155,7 @@ export function TaskListView({
               <span>Assignee</span>
               <span className="sr-only">Actions</span>
             </div>
-            {sortedTasks.map((task) => (
+            {sortedTasks.map((task, index) => (
                   <div
                     className="relative grid grid-cols-[minmax(0,1fr)_8rem] items-center gap-x-4 gap-y-3 px-4 py-3 transition hover:bg-slate-50/70 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(180px,1fr)_140px_110px_85px_170px_36px] xl:gap-5 xl:px-5 xl:py-4"
                     key={task.id}
@@ -182,7 +182,7 @@ export function TaskListView({
                     <label className="relative col-start-2 row-start-2 w-32 justify-self-end sm:w-fit xl:row-start-1 xl:row-span-2 xl:w-full xl:justify-self-start">
                       <span className="sr-only">Status for {task.title}</span>
                       <select
-                        className={`w-full cursor-pointer appearance-none rounded-lg border py-2 pl-3 pr-8 text-xs font-bold outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:cursor-wait disabled:opacity-60 sm:text-sm ${statusStyles[task.status]}`}
+                        className={`w-full cursor-pointer rounded-lg border px-3 py-2 text-xs font-bold outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:cursor-wait disabled:opacity-60 sm:text-sm ${statusStyles[task.status]}`}
                         disabled={updatingStatusTaskId === task.id}
                         onChange={(event) => changeStatus(task, event.target.value as TaskStatus)}
                         value={task.status}
@@ -193,9 +193,6 @@ export function TaskListView({
                           </option>
                         ))}
                       </select>
-                      <span className="pointer-events-none absolute inset-y-0 right-2.5 grid place-items-center text-[10px] opacity-60">
-                        ▼
-                      </span>
                     </label>
 
                     <div className="col-start-1 row-start-3 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 xl:contents">
@@ -264,7 +261,7 @@ export function TaskListView({
                       </button>
 
                       <div
-                        className={`absolute right-0 top-10 z-10 w-32 origin-top-right rounded-xl border border-slate-200 bg-white p-1 shadow-lg transition xl:bottom-10 xl:top-auto xl:origin-bottom-right ${
+                        className={`absolute right-0 top-10 z-10 w-32 origin-top-right rounded-xl border border-slate-200 bg-white p-1 shadow-lg transition ${index === 0 ? "" : "xl:bottom-10 xl:top-auto xl:origin-bottom-right"} ${
                           openTaskMenuId === task.id
                             ? "visible scale-100 opacity-100"
                             : "invisible scale-95 opacity-0"
