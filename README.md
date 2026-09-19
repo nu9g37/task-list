@@ -22,8 +22,8 @@ npm run build
 
 ## Free personal deployment
 
-1. Create a free PostgreSQL database on Neon. For a serverless Vercel app, use Neon's pooled connection string as `DATABASE_URL`; enable TLS in the connection string.
-2. With `DATABASE_URL` set locally to the production database, run `npm run db:deploy` once before opening the app. Repeat after future schema migrations. Do not use `prisma migrate dev` on production.
+1. Create a free PostgreSQL database on Neon. Copy both connection strings from the Connect dialog. Use the pooled string (`-pooler` in the hostname, with `sslmode=require`) as Vercel's `DATABASE_URL` for app traffic.
+2. Run `npm run db:deploy` against Neon's direct (non-pooled) connection string before opening the app. This project's Prisma config reads the migration URL from `DATABASE_URL`, so set that variable to the direct string only for the migration command. Repeat after future schema migrations. Do not use `prisma migrate dev` on production.
 3. Import this repository into a Vercel Hobby project. Set `DATABASE_URL`, `BETTER_AUTH_SECRET` (at least 32 random characters) and `BETTER_AUTH_URL` (the final `https://...vercel.app` URL) in Production environment variables.
 4. Deploy. The build script generates Prisma Client before building Next.js. Test sign-up, sign-in and task creation using the deployed URL.
 
