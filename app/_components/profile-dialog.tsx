@@ -10,8 +10,43 @@ type ProfileDialogProps = {
   onClose: () => void;
   onSaveName: (name: string) => Promise<string | undefined>;
   onSaveImage: (image: string) => Promise<string | undefined>;
+  onChangePassword: (currentPassword: string, newPassword: string) => Promise<string | undefined>;
   onSignOut: () => Promise<string | undefined>;
 };
+
+function PasswordField({ label, value, onChange, autoComplete }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  autoComplete: string;
+}) {
+  const [visible, setVisible] = useState(false);
+
+  return (
+    <label className="block text-sm font-medium text-slate-700">
+      {label}
+      <span className="mt-2 flex items-center rounded-xl border border-slate-200 bg-white focus-within:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-50">
+        <input
+          autoComplete={autoComplete}
+          className="min-w-0 flex-1 rounded-xl bg-transparent px-3.5 py-2.5 text-sm text-slate-800 outline-none"
+          onChange={(event) => onChange(event.target.value)}
+          required
+          type={visible ? "text" : "password"}
+          value={value}
+        />
+        <button
+          aria-label={`${visible ? "Hide" : "Show"} ${label.toLowerCase()}`}
+          aria-pressed={visible}
+          className="px-3 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700"
+          onClick={() => setVisible((current) => !current)}
+          type="button"
+        >
+          {visible ? "Hide" : "Show"}
+        </button>
+      </span>
+    </label>
+  );
+}
 
 async function prepareProfileImage(file: File) {
   if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
@@ -38,15 +73,56 @@ async function prepareProfileImage(file: File) {
   }
 }
 
-export function ProfileDialog({ name, email, image, onClose, onSaveName, onSaveImage, onSignOut }: ProfileDialogProps) {
+export function ProfileDialog({ name, email, image, onClose, onSaveName, onSaveImage, onChangePassword, onSignOut }: ProfileDialogProps) {
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(name);
   const [savingName, setSavingName] = useState(false);
   const [savingImage, setSavingImage] = useState(false);
+  const [editingPassword, setEditingPassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [notice, setNotice] = useState<string>();
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string>();
-  const busy = savingName || savingImage || signingOut;
+  const busy = savingName || savingImage || changingPassword || signingOut;
+
+  function clearPasswordFields() {
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+  }
+
+  async function changePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(undefined);
+    setNotice(undefined);
+    if (newPassword.length < 8) {
+      setError("New password must be at least 8 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("New passwords do not match.");
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      const message = await onChangePassword(currentPassword, newPassword);
+      if (message) setError(message);
+      else {
+        clearPasswordFields();
+        setEditingPassword(false);
+        setNotice("Password changed successfully.");
+      }
+    } catch {
+      setError("Unable to change your password. Please try again.");
+    } finally {
+      setChangingPassword(false);
+    }
+  }
 
   useEffect(() => {
     function closeOnEscape(event: KeyboardEvent) {
@@ -120,7 +196,7 @@ export function ProfileDialog({ name, email, image, onClose, onSaveName, onSaveI
       }}
       role="dialog"
     >
-      <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl sm:p-7">
+      <div className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-7">
         <div className="flex items-center justify-between">
           <span className="size-9" aria-hidden="true" />
           <h2 className="text-lg font-bold text-slate-900" id="profile-dialog-title">Profile</h2>
@@ -212,9 +288,55 @@ export function ProfileDialog({ name, email, image, onClose, onSaveName, onSaveI
             <p className="mb-2 text-sm font-semibold text-slate-700">Email</p>
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">{email}</div>
           </div>
+
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-sm font-semibold text-slate-700">Password</span>
+              {!editingPassword ? (
+                <button
+                  className="text-sm font-semibold text-indigo-600 hover:text-indigo-700"
+                  onClick={() => {
+                    setError(undefined);
+                    setNotice(undefined);
+                    setEditingPassword(true);
+                  }}
+                  type="button"
+                >
+                  Change
+                </button>
+              ) : null}
+            </div>
+            {editingPassword ? (
+              <form className="space-y-3 rounded-xl border border-slate-200 p-4" onSubmit={changePassword}>
+                <PasswordField autoComplete="current-password" label="Current password" onChange={setCurrentPassword} value={currentPassword} />
+                <PasswordField autoComplete="new-password" label="New password" onChange={setNewPassword} value={newPassword} />
+                <PasswordField autoComplete="new-password" label="Confirm new password" onChange={setConfirmPassword} value={confirmPassword} />
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600"
+                    disabled={changingPassword}
+                    onClick={() => {
+                      clearPasswordFields();
+                      setEditingPassword(false);
+                      setError(undefined);
+                    }}
+                    type="button"
+                  >
+                    Cancel
+                  </button>
+                  <button className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={changingPassword} type="submit">
+                    {changingPassword ? "Saving..." : "Save password"}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">••••••••</div>
+            )}
+          </div>
         </div>
 
         {error ? <p className="mt-5 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">{error}</p> : null}
+        {notice ? <p className="mt-5 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700" role="status">{notice}</p> : null}
 
         <div className="mt-7 border-t border-slate-100 pt-5 text-center">
           <button

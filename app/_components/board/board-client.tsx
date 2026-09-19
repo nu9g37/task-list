@@ -493,6 +493,12 @@ export function BoardClient({
     return undefined;
   }
 
+  async function changeProfilePassword(currentPassword: string, newPassword: string): Promise<string | undefined> {
+    const result = await authClient.changePassword({ currentPassword, newPassword });
+    if (result.error) return result.error.message ?? "Unable to change your password.";
+    return undefined;
+  }
+
   const searchControl = (
     <div className="flex h-11 w-full min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-400 shadow-sm focus-within:border-indigo-400 focus-within:ring-4 focus-within:ring-indigo-50 sm:max-w-md">
       <span aria-hidden="true">⌕</span>
@@ -882,6 +888,7 @@ export function BoardClient({
           onClose={() => setProfileOpen(false)}
           onSaveName={saveProfileName}
           onSaveImage={saveProfileImage}
+          onChangePassword={changeProfilePassword}
           onSignOut={signOut}
         />
       ) : null}
