@@ -18,7 +18,7 @@ export default async function Home() {
   });
   const project = projectRecords[0];
   const records = await prisma.task.findMany({
-    where: { projectId: project?.id ?? "" },
+    where: { project: { members: { some: { userId: session.user.id } } } },
     include: {
       assignees: {
         include: {

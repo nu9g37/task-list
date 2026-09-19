@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { BoardColumn } from "./board-column";
-import { boardColumns, type Task, type TaskStatus } from "@/app/_types/task";
+import { boardColumns, type Task, type TaskAssignee, type TaskPriority, type TaskStatus } from "@/app/_types/task";
 import { Sidebar } from "@/app/_components/sidebar";
 import { TaskDialog, type TaskDraft } from "./task-dialog";
 import { authClient } from "@/lib/auth-client";
@@ -11,6 +11,9 @@ import { ProjectDialog, type ProjectDraft } from "@/app/_components/project-dial
 import type { Project } from "@/app/_types/project";
 import { ProjectMembersDialog } from "@/app/_components/project-members-dialog";
 import { TaskListView } from "./task-list-view";
+import { TaskCalendarView } from "./task-calendar-view";
+import { TaskOverviewView } from "./task-overview-view";
+import type { ProjectMembersResponse } from "@/app/_types/project-member";
 
 type BoardClientProps = {
   initialTasks: Task[];
@@ -29,8 +32,8 @@ type DialogState =
   | { kind: "edit"; task: Task }
   | null;
 
-type ProjectView = "board" | "list";
-type WorkspaceView = "project" | "my-tasks";
+type ProjectView = "board" | "list" | "calendar";
+type WorkspaceView = "project" | "my-tasks" | "calendar" | "overview";
 
 function toTask(value: TaskApiResponse): Task {
   return { ...value, dueDate: value.dueDate ?? undefined };
@@ -60,9 +63,16 @@ export function BoardClient({
   const [tasks, setTasks] = useState(initialTasks);
   const [projects, setProjects] = useState(initialProjects);
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
-  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("project");
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("overview");
   const [myTaskCount, setMyTaskCount] = useState(initialMyTaskCount);
   const [query, setQuery] = useState("");
+  const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
+  const [selectedPriority, setSelectedPriority] = useState<TaskPriority | null>(null);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [projectMembers, setProjectMembers] = useState<TaskAssignee[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersError, setMembersError] = useState<string>();
+  const filterRef = useRef<HTMLDivElement>(null);
   const [projectView, setProjectView] = useState<ProjectView>("board");
   const [dialog, setDialog] = useState<DialogState>(null);
   const [saving, setSaving] = useState(false);
@@ -76,24 +86,76 @@ export function BoardClient({
   const [signingOut, setSigningOut] = useState(false);
   const userInitials = getInitials(userName, userEmail);
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
+  const hasActiveFilters = selectedAssigneeIds.length > 0 || selectedPriority !== null;
+
+  const availableAssignees = useMemo(() => {
+    const people = new Map<string, TaskAssignee>();
+    for (const member of workspaceView === "project" ? projectMembers : []) {
+      people.set(member.id, member);
+    }
+    for (const task of tasks) {
+      for (const assignee of task.assignees) people.set(assignee.id, assignee);
+    }
+    return [...people.values()].sort((first, second) => first.name.localeCompare(second.name));
+  }, [projectMembers, tasks, workspaceView]);
+
+  useEffect(() => {
+    if (!filterOpen) return;
+    function closeOnOutsideClick(event: PointerEvent) {
+      if (!filterRef.current?.contains(event.target as Node)) setFilterOpen(false);
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setFilterOpen(false);
+    }
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [filterOpen]);
+
+  useEffect(() => {
+    if (!filterOpen || workspaceView !== "project" || !selectedProjectId) return;
+    const controller = new AbortController();
+    fetch(`/api/projects/${encodeURIComponent(selectedProjectId)}/members`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(await readApiError(response));
+        return (await response.json()) as ProjectMembersResponse;
+      })
+      .then((data) => setProjectMembers(data.members.map((member) => member.user)))
+      .catch((error) => {
+        if (error instanceof Error && error.name !== "AbortError") {
+          setMembersError("Unable to load project members.");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setMembersLoading(false);
+      });
+    return () => controller.abort();
+  }, [filterOpen, selectedProjectId, workspaceView]);
 
   const visibleTasks = useMemo(() => {
     const search = query.trim().toLowerCase();
-    if (!search) return tasks;
     return tasks.filter((task) =>
-      [
-        task.code,
-        task.title,
-        task.description,
-        task.tag,
-        task.project.name,
-        ...task.assignees.flatMap((assignee) => [assignee.name, assignee.email]),
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(search),
+      (!search || task.code.toLowerCase().includes(search) || task.title.toLowerCase().includes(search)) &&
+      (!selectedPriority || task.priority === selectedPriority) &&
+      (selectedAssigneeIds.length === 0 || task.assignees.some((assignee) => selectedAssigneeIds.includes(assignee.id))),
     );
-  }, [query, tasks]);
+  }, [query, selectedAssigneeIds, selectedPriority, tasks]);
+
+  function clearFilters() {
+    setSelectedAssigneeIds([]);
+    setSelectedPriority(null);
+  }
+
+  function resetSearchAndFilters() {
+    setQuery("");
+    clearFilters();
+    setFilterOpen(false);
+    setProjectMembers([]);
+    setMembersError(undefined);
+  }
 
   function openCreate(status: TaskStatus) {
     if (!selectedProjectId) {
@@ -207,7 +269,11 @@ export function BoardClient({
   }
 
   async function selectProject(projectId: string) {
-    if ((projectId === selectedProjectId && workspaceView === "project") || loadingProject) return;
+    if (loadingProject) return;
+    if (projectId === selectedProjectId && workspaceView === "project") {
+      setProjectView("board");
+      return;
+    }
     setLoadingProject(true);
     setPageError(undefined);
 
@@ -217,8 +283,9 @@ export function BoardClient({
       const projectTasks = ((await response.json()) as TaskApiResponse[]).map(toTask);
       setSelectedProjectId(projectId);
       setWorkspaceView("project");
+      setProjectView("board");
       setTasks(projectTasks);
-      setQuery("");
+      resetSearchAndFilters();
       setMembersDialogOpen(false);
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to load project.");
@@ -228,7 +295,11 @@ export function BoardClient({
   }
 
   async function openMyTasks() {
-    if (workspaceView === "my-tasks" || loadingProject) return;
+    if (loadingProject) return;
+    if (workspaceView === "my-tasks") {
+      setProjectView("board");
+      return;
+    }
     setLoadingProject(true);
     setPageError(undefined);
 
@@ -239,10 +310,50 @@ export function BoardClient({
       setTasks(assignedTasks);
       setMyTaskCount(assignedTasks.length);
       setWorkspaceView("my-tasks");
-      setQuery("");
+      setProjectView("board");
+      resetSearchAndFilters();
       setMembersDialogOpen(false);
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to load your tasks.");
+    } finally {
+      setLoadingProject(false);
+    }
+  }
+
+  async function openCalendar() {
+    if (loadingProject) return;
+    if (workspaceView === "calendar") return;
+    setLoadingProject(true);
+    setPageError(undefined);
+
+    try {
+      const response = await fetch("/api/tasks?allProjects=true");
+      if (!response.ok) throw new Error(await readApiError(response));
+      setTasks(((await response.json()) as TaskApiResponse[]).map(toTask));
+      setWorkspaceView("calendar");
+      resetSearchAndFilters();
+      setMembersDialogOpen(false);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Unable to load calendar.");
+    } finally {
+      setLoadingProject(false);
+    }
+  }
+
+  async function openOverview() {
+    if (loadingProject || workspaceView === "overview") return;
+    setLoadingProject(true);
+    setPageError(undefined);
+
+    try {
+      const response = await fetch("/api/tasks?allProjects=true");
+      if (!response.ok) throw new Error(await readApiError(response));
+      setTasks(((await response.json()) as TaskApiResponse[]).map(toTask));
+      setWorkspaceView("overview");
+      resetSearchAndFilters();
+      setMembersDialogOpen(false);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Unable to load overview.");
     } finally {
       setLoadingProject(false);
     }
@@ -287,8 +398,9 @@ export function BoardClient({
       if (!editing) {
         setSelectedProjectId(savedProject.id);
         setWorkspaceView("project");
+        setProjectView("board");
         setTasks([]);
-        setQuery("");
+        resetSearchAndFilters();
       }
       setProjectDialog(null);
     } catch (error) {
@@ -310,13 +422,14 @@ export function BoardClient({
 
       const remaining = projects.filter((item) => item.id !== project.id);
       setProjects(remaining);
-      if (workspaceView === "my-tasks") {
+      if (workspaceView === "my-tasks" || workspaceView === "calendar" || workspaceView === "overview") {
         const removedAssignedCount = tasks.filter(
           (task) => task.project.id === project.id &&
             task.assignees.some((assignee) => assignee.id === userId),
         ).length;
         setTasks((current) => current.filter((task) => task.project.id !== project.id));
         setMyTaskCount((current) => Math.max(0, current - removedAssignedCount));
+        if (project.id === selectedProjectId) setSelectedProjectId(remaining[0]?.id ?? null);
       } else if (project.id === selectedProjectId) {
         if (remaining[0]) {
           setSelectedProjectId(remaining[0].id);
@@ -325,10 +438,11 @@ export function BoardClient({
           );
           if (!tasksResponse.ok) throw new Error(await readApiError(tasksResponse));
           setTasks(((await tasksResponse.json()) as TaskApiResponse[]).map(toTask));
+          resetSearchAndFilters();
         } else {
           setSelectedProjectId(null);
           setTasks([]);
-          setQuery("");
+          resetSearchAndFilters();
         }
       }
     } catch (error) {
@@ -350,6 +464,120 @@ export function BoardClient({
     router.refresh();
   }
 
+  const searchControl = (
+    <div className="flex h-11 w-full min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-400 shadow-sm focus-within:border-indigo-400 focus-within:ring-4 focus-within:ring-indigo-50 sm:max-w-md">
+      <span aria-hidden="true">⌕</span>
+      <input
+        aria-label="Search task code or name"
+        className="min-w-0 flex-1 bg-transparent text-slate-700 outline-none placeholder:text-slate-400"
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Search code or task name..."
+        type="text"
+        value={query}
+      />
+      {query ? (
+        <button
+          aria-label="Clear search"
+          className="grid size-5 shrink-0 place-items-center rounded-full text-base leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+          onClick={() => setQuery("")}
+          type="button"
+        >
+          ×
+        </button>
+      ) : null}
+    </div>
+  );
+
+  const filterControl = (
+    <div className="relative shrink-0" ref={filterRef}>
+      <button
+        aria-label={hasActiveFilters ? "Filter tasks, filters active" : "Filter tasks"}
+        aria-controls="task-filter-panel"
+        aria-expanded={filterOpen}
+        aria-haspopup="dialog"
+        className="relative flex h-11 items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-indigo-200 hover:text-indigo-600"
+        onClick={() => {
+          if (!filterOpen) {
+            setMembersLoading(workspaceView === "project" && !!selectedProjectId);
+            setMembersError(undefined);
+          }
+          setFilterOpen((current) => !current);
+        }}
+        type="button"
+      >
+        <span aria-hidden="true">☷</span>
+        Filter
+        {hasActiveFilters ? (
+          <span aria-hidden="true" className="absolute -right-1 -top-1 size-2.5 rounded-full bg-rose-500 ring-2 ring-white" />
+        ) : null}
+      </button>
+      {filterOpen ? (
+        <div
+          aria-label="Task filters"
+          className="absolute right-0 top-[calc(100%+0.5rem)] z-30 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-xl"
+          id="task-filter-panel"
+          role="dialog"
+        >
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-bold text-slate-800">Filters</h2>
+            <button
+              className="text-xs font-semibold text-slate-500 hover:text-indigo-600 disabled:opacity-40"
+              disabled={!hasActiveFilters}
+              onClick={clearFilters}
+              type="button"
+            >
+              Clear filter
+            </button>
+          </div>
+          {workspaceView !== "my-tasks" ? (
+            <fieldset>
+              <legend className="mb-2 font-semibold text-slate-700">Assignee</legend>
+              <div className="max-h-44 space-y-1 overflow-y-auto">
+                {availableAssignees.map((assignee) => (
+                  <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-1.5 text-slate-600 hover:bg-slate-50" key={assignee.id}>
+                    <input
+                      checked={selectedAssigneeIds.includes(assignee.id)}
+                      className="size-4 accent-indigo-600"
+                      onChange={() => setSelectedAssigneeIds((current) =>
+                        current.includes(assignee.id)
+                          ? current.filter((id) => id !== assignee.id)
+                          : [...current, assignee.id],
+                      )}
+                      type="checkbox"
+                    />
+                    <span className="truncate">{assignee.name}</span>
+                  </label>
+                ))}
+                {availableAssignees.length === 0 ? (
+                  <p className="px-2 py-1 text-slate-400">{membersLoading ? "Loading members..." : "No assignees available"}</p>
+                ) : null}
+              </div>
+              {membersError ? <p className="mt-2 text-xs text-rose-600">{membersError}</p> : null}
+            </fieldset>
+          ) : null}
+          <fieldset className={workspaceView !== "my-tasks" ? "mt-4 border-t border-slate-100 pt-4" : ""}>
+            <legend className="font-semibold text-slate-700">Priority</legend>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {(["LOW", "MEDIUM", "HIGH"] as TaskPriority[]).map((priority) => (
+                <label className={`cursor-pointer rounded-lg border px-2 py-2 text-center text-xs font-semibold ${selectedPriority === priority ? "border-indigo-500 bg-indigo-50 text-indigo-700" : "border-slate-200 text-slate-600 hover:border-indigo-200"}`} key={priority}>
+                  <input
+                    checked={selectedPriority === priority}
+                    className="sr-only"
+                    onChange={() => setSelectedPriority(priority)}
+                    type="radio"
+                    name="task-priority-filter"
+                    value={priority}
+                  />
+                  {priority.charAt(0) + priority.slice(1).toLowerCase()}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+      ) : null}
+    </div>
+  );
+
   return (
     <main className="min-h-screen bg-[#f7f8fc] text-slate-950">
       <div className="mx-auto flex min-h-screen max-w-[1800px]">
@@ -365,6 +593,8 @@ export function BoardClient({
             setProjectDialog(project);
           }}
           onMyTasks={openMyTasks}
+          onOverview={openOverview}
+          onCalendar={openCalendar}
           onSelectProject={selectProject}
           projects={projects}
           selectedProjectId={selectedProjectId}
@@ -372,25 +602,13 @@ export function BoardClient({
         />
 
         <section className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
-          <header className="mb-8 flex items-center justify-between gap-4">
+          <header className="mb-8 flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-3 lg:hidden">
               <div className="grid size-10 place-items-center rounded-2xl bg-indigo-600 text-sm font-black text-white shadow-lg shadow-indigo-200">
                 T
               </div>
               <span className="font-bold tracking-tight">Tasklist</span>
             </div>
-
-            <label className="hidden w-full max-w-md items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400 shadow-sm sm:flex">
-              <span aria-hidden="true">⌕</span>
-              <input
-                aria-label="Search tasks"
-                className="w-full bg-transparent text-slate-700 outline-none placeholder:text-slate-400"
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search tasks..."
-                type="search"
-                value={query}
-              />
-            </label>
 
             <button
               className="ml-auto rounded-xl px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-white hover:text-slate-900 disabled:opacity-60"
@@ -413,6 +631,10 @@ export function BoardClient({
               <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-400">
                 {workspaceView === "my-tasks" ? (
                   <span className="text-slate-600">My tasks</span>
+                ) : workspaceView === "calendar" ? (
+                  <span className="text-slate-600">Calendar</span>
+                ) : workspaceView === "overview" ? (
+                  <span className="text-slate-600">Overview</span>
                 ) : (
                   <><span>Projects</span><span>/</span><span className="text-slate-600">{selectedProject?.name ?? "No project"}</span></>
                 )}
@@ -420,11 +642,19 @@ export function BoardClient({
               <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
                 {workspaceView === "my-tasks"
                   ? "My tasks"
+                  : workspaceView === "calendar"
+                    ? "Calendar"
+                    : workspaceView === "overview"
+                      ? "Overview"
                   : selectedProject?.name ?? "Create your first project"}
               </h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base">
                 {workspaceView === "my-tasks"
                   ? "Tasks assigned to you across all projects."
+                  : workspaceView === "calendar"
+                    ? "Due dates across all your projects."
+                    : workspaceView === "overview"
+                      ? "A snapshot of tasks across all your projects."
                   : selectedProject?.description ||
                     (selectedProject
                       ? "Plan, organize, and finish your work."
@@ -464,9 +694,9 @@ export function BoardClient({
             </div>
           ) : null}
 
-          {workspaceView === "my-tasks" || selectedProject ? (
+          {workspaceView !== "project" || selectedProject ? (
             <>
-              <div className="mb-6 flex items-center justify-between border-b border-slate-200">
+              {workspaceView === "project" || workspaceView === "my-tasks" ? <div className="mb-6 flex items-center justify-between border-b border-slate-200">
                 <nav aria-label="Project views" className="flex gap-7">
                   <button
                     aria-current={projectView === "board" ? "page" : undefined}
@@ -475,7 +705,10 @@ export function BoardClient({
                         ? "border-b-2 border-indigo-600 font-semibold text-indigo-600"
                         : "font-medium text-slate-400 hover:text-slate-700"
                     }`}
-                    onClick={() => setProjectView("board")}
+                    onClick={() => {
+                      setFilterOpen(false);
+                      setProjectView("board");
+                    }}
                     type="button"
                   >
                     Board
@@ -487,34 +720,89 @@ export function BoardClient({
                         ? "border-b-2 border-indigo-600 font-semibold text-indigo-600"
                         : "font-medium text-slate-400 hover:text-slate-700"
                     }`}
-                    onClick={() => setProjectView("list")}
+                    onClick={() => {
+                      setFilterOpen(false);
+                      setProjectView("list");
+                    }}
                     type="button"
                   >
                     List
                   </button>
-                  <button className="cursor-not-allowed px-1 pb-4 text-sm font-medium text-slate-300" disabled type="button">
-                    Timeline
+                  <button
+                    aria-current={projectView === "calendar" ? "page" : undefined}
+                    className={`px-1 pb-4 text-sm transition ${
+                      projectView === "calendar"
+                        ? "border-b-2 border-indigo-600 font-semibold text-indigo-600"
+                        : "font-medium text-slate-400 hover:text-slate-700"
+                    }`}
+                    onClick={() => {
+                      setFilterOpen(false);
+                      setQuery("");
+                      clearFilters();
+                      setProjectView("calendar");
+                    }}
+                    type="button"
+                  >
+                    Calendar
                   </button>
                 </nav>
-              </div>
+              </div> : null}
 
               <div className={`transition ${loadingProject ? "opacity-50" : ""}`}>
-                {projectView === "board" ? (
-                  <div className="grid items-start gap-5 overflow-x-auto pb-6 md:grid-cols-3">
-                    {boardColumns.map((column) => (
-                      <BoardColumn
-                        canAdd={workspaceView === "project"}
-                        column={column}
-                        key={column.status}
-                        onAdd={openCreate}
-                        onDelete={deleteTask}
-                        onEdit={openEdit}
-                        tasks={visibleTasks.filter((task) => task.status === column.status)}
-                      />
-                    ))}
+                {workspaceView === "overview" ? (
+                  <TaskOverviewView
+                    onDelete={deleteTask}
+                    onEdit={openEdit}
+                    onStatusChange={changeTaskStatus}
+                    tasks={visibleTasks}
+                    toolbarActions={filterControl}
+                  />
+                ) : workspaceView === "calendar" ? (
+                  <TaskCalendarView
+                    key="all-projects"
+                    onDelete={deleteTask}
+                    onEdit={openEdit}
+                    onStatusChange={changeTaskStatus}
+                    tasks={visibleTasks}
+                  />
+                ) : projectView === "board" ? (
+                  <div>
+                    <div className="mb-5 flex flex-wrap items-center gap-2">
+                      {searchControl}
+                      {filterControl}
+                    </div>
+                    <div className="grid items-start gap-5 overflow-x-auto pb-6 md:grid-cols-3">
+                      {boardColumns.map((column) => (
+                        <BoardColumn
+                          canAdd={workspaceView === "project"}
+                          column={column}
+                          emptyMessage={query.trim() || hasActiveFilters ? "No matching tasks" : undefined}
+                          key={column.status}
+                          onAdd={openCreate}
+                          onDelete={deleteTask}
+                          onEdit={openEdit}
+                          tasks={visibleTasks.filter((task) => task.status === column.status)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : projectView === "list" ? (
+                  <div>
+                    <div className="mb-5 flex flex-wrap items-center gap-2">
+                      {searchControl}
+                      {filterControl}
+                    </div>
+                    <TaskListView
+                      emptyMessage={query.trim() || hasActiveFilters ? "No matching tasks" : undefined}
+                      onDelete={deleteTask}
+                      onEdit={openEdit}
+                      onStatusChange={changeTaskStatus}
+                      tasks={visibleTasks}
+                    />
                   </div>
                 ) : (
-                  <TaskListView
+                  <TaskCalendarView
+                    key={workspaceView === "my-tasks" ? "my-tasks" : selectedProjectId ?? "no-project"}
                     onDelete={deleteTask}
                     onEdit={openEdit}
                     onStatusChange={changeTaskStatus}

@@ -1,7 +1,7 @@
 import type { Project, ProjectColor } from "@/app/_types/project";
 
 type SidebarProps = {
-  activeView: "project" | "my-tasks";
+  activeView: "project" | "my-tasks" | "calendar" | "overview";
   projects: Project[];
   selectedProjectId: string | null;
   taskCount: number;
@@ -9,6 +9,8 @@ type SidebarProps = {
   onDeleteProject: (project: Project) => void;
   onEditProject: (project: Project) => void;
   onMyTasks: () => void;
+  onOverview: () => void;
+  onCalendar: () => void;
   onSelectProject: (projectId: string) => void;
 };
 
@@ -29,12 +31,14 @@ export function Sidebar({
   onDeleteProject,
   onEditProject,
   onMyTasks,
+  onOverview,
+  onCalendar,
   onSelectProject,
 }: SidebarProps) {
   const navigation = [
-    { label: "Overview", icon: "⌂", enabled: false },
-    { label: "My tasks", icon: "✓", badge: String(taskCount), enabled: true },
-    { label: "Calendar", icon: "□", enabled: false },
+    { label: "Overview", enabled: true },
+    { label: "My tasks", badge: String(taskCount), enabled: true },
+    { label: "Calendar", enabled: true },
   ];
 
   return (
@@ -53,19 +57,18 @@ export function Sidebar({
         {navigation.map((item) => (
           <button
             className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
-              item.label === "My tasks" && activeView === "my-tasks"
+              (item.label === "Overview" && activeView === "overview") ||
+              (item.label === "My tasks" && activeView === "my-tasks") ||
+              (item.label === "Calendar" && activeView === "calendar")
                 ? "bg-indigo-50 text-indigo-700"
                 : item.enabled
                   ? "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                   : "cursor-default text-slate-400"
             }`}
             key={item.label}
-            onClick={item.label === "My tasks" ? onMyTasks : undefined}
+            onClick={item.label === "Overview" ? onOverview : item.label === "My tasks" ? onMyTasks : item.label === "Calendar" ? onCalendar : undefined}
             type="button"
           >
-            <span className="grid size-6 place-items-center text-base text-slate-400">
-              {item.icon}
-            </span>
             <span>{item.label}</span>
             {item.badge ? (
               <span className="ml-auto rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-600">
@@ -134,15 +137,6 @@ export function Sidebar({
         </div>
       </div>
 
-      <div className="mt-auto rounded-2xl bg-slate-950 p-4 text-white">
-        <p className="text-sm font-semibold">Build your streak</p>
-        <p className="mt-1 text-xs leading-5 text-slate-400">
-          Complete one task today to keep your momentum.
-        </p>
-        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-700">
-          <div className="h-full w-2/3 rounded-full bg-indigo-400" />
-        </div>
-      </div>
     </aside>
   );
 }

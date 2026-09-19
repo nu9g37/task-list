@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import {
   type Task,
   type TaskPriority,
@@ -10,6 +11,8 @@ import type { ProjectColor } from "@/app/_types/project";
 
 type TaskListViewProps = {
   tasks: Task[];
+  emptyMessage?: string;
+  toolbarActions?: ReactNode;
   onDelete: (task: Task) => void;
   onEdit: (task: Task) => void;
   onStatusChange: (task: Task, status: TaskStatus) => Promise<void>;
@@ -60,6 +63,8 @@ function getInitials(name: string, email: string) {
 
 export function TaskListView({
   tasks,
+  emptyMessage = "No tasks yet",
+  toolbarActions,
   onDelete,
   onEdit,
   onStatusChange,
@@ -125,7 +130,7 @@ export function TaskListView({
           Sort by
         </label>
         <select
-          className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+          className="h-11 rounded-xl border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-700 shadow-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
           id="task-sort"
           onChange={(event) => setSortBy(event.target.value as SortOption)}
           value={sortBy}
@@ -136,6 +141,7 @@ export function TaskListView({
           <option value="title">Title</option>
           <option value="status">Status</option>
         </select>
+        {toolbarActions}
       </div>
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -292,7 +298,7 @@ export function TaskListView({
             ))}
           </div>
         ) : (
-          <div className="px-5 py-12 text-center text-sm text-slate-400">No tasks yet</div>
+          <div className="px-5 py-12 text-center text-sm text-slate-400">{emptyMessage}</div>
         )}
       </section>
     </div>

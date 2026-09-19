@@ -5,6 +5,7 @@ type BoardColumnProps = {
   canAdd?: boolean;
   column: BoardColumnData;
   tasks: Task[];
+  emptyMessage?: string;
   onAdd: (status: Task["status"]) => void;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
@@ -14,6 +15,7 @@ export function BoardColumn({
   canAdd = true,
   column,
   tasks,
+  emptyMessage = "No tasks yet",
   onAdd,
   onEdit,
   onDelete,
@@ -46,7 +48,7 @@ export function BoardColumn({
         ))}
         {tasks.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white/60 px-4 py-8 text-center text-sm text-slate-400">
-            No tasks yet
+            {emptyMessage}
           </div>
         ) : null}
       </div>

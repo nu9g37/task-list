@@ -44,6 +44,16 @@ export async function GET(request: Request) {
   if (!session) return Response.json({ error: "Unauthorized." }, { status: 401 });
 
   const url = new URL(request.url);
+  const allProjects = url.searchParams.get("allProjects") === "true";
+  if (allProjects) {
+    const tasks = await prisma.task.findMany({
+      where: { project: { members: { some: { userId: session.user.id } } } },
+      include: taskInclude,
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+    });
+    return Response.json(tasks.map(serializeTask));
+  }
+
   const assignedToMe = url.searchParams.get("assignedToMe") === "true";
   if (assignedToMe) {
     const tasks = await prisma.task.findMany({
