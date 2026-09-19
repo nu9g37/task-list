@@ -327,6 +327,11 @@ export function BoardClient({
 
     try {
       const editing = dialog.kind === "edit";
+      const sameAssignees = editing &&
+        draft.assigneeIds.length === dialog.task.assignees.length &&
+        draft.assigneeIds.every((id) => dialog.task.assignees.some((assignee) => assignee.id === id));
+      const taskFields: Partial<TaskDraft> = { ...draft };
+      if (sameAssignees) delete taskFields.assigneeIds;
       const response = await fetch(
         editing
           ? `/api/tasks/${dialog.task.id}`
@@ -334,7 +339,7 @@ export function BoardClient({
         {
         method: editing ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
+        body: JSON.stringify(taskFields),
         },
       );
 
@@ -368,7 +373,7 @@ export function BoardClient({
         );
       }
       setDialog(null);
-      await refreshCurrentTasks();
+      void refreshCurrentTasks();
     } catch (error) {
       setDialogError(error instanceof Error ? error.message : "Unable to save task.");
     } finally {
@@ -396,7 +401,7 @@ export function BoardClient({
             : project,
         ),
       );
-      await refreshCurrentTasks();
+      void refreshCurrentTasks();
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to delete task.");
     }
@@ -418,7 +423,7 @@ export function BoardClient({
       setTasks((current) =>
         current.map((item) => (item.id === savedTask.id ? savedTask : item)),
       );
-      await refreshCurrentTasks();
+      void refreshCurrentTasks();
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to update task status.");
     }
