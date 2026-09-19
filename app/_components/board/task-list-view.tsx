@@ -125,7 +125,7 @@ export function TaskListView({
 
   return (
     <div className="pb-8">
-      <div className="mb-4 flex items-center justify-start gap-2">
+      <div className="mb-4 flex flex-wrap items-center justify-start gap-2">
         <label className="text-sm font-medium text-slate-500" htmlFor="task-sort">
           Sort by
         </label>
@@ -144,30 +144,32 @@ export function TaskListView({
         {toolbarActions}
       </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <section className="overflow-visible rounded-2xl border border-slate-200 bg-white shadow-sm xl:overflow-x-auto">
         {tasks.length > 0 ? (
-          <div className="divide-y divide-slate-100">
-            <div className="hidden grid-cols-[minmax(240px,1fr)_130px_80px_120px_180px_40px] items-center gap-4 bg-slate-50/80 px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400 xl:grid">
+          <div className="divide-y divide-slate-100 xl:min-w-[880px]">
+            <div className="hidden grid-cols-[minmax(180px,1fr)_140px_110px_85px_170px_36px] items-center gap-5 bg-slate-50/80 px-5 py-3 text-[11px] font-bold uppercase tracking-wider text-slate-400 xl:grid">
               <span>Task</span>
               <span>Status</span>
-              <span>Priority</span>
               <span>Due date</span>
+              <span>Priority</span>
               <span>Assignee</span>
               <span className="sr-only">Actions</span>
             </div>
             {sortedTasks.map((task) => (
                   <div
-                    className="grid gap-3 px-4 py-4 transition hover:bg-slate-50/70 sm:px-5 xl:grid-cols-[minmax(240px,1fr)_130px_80px_120px_180px_40px] xl:items-center xl:gap-4"
+                    className="relative grid grid-cols-[minmax(0,1fr)_8rem] items-center gap-x-4 gap-y-3 px-4 py-3 transition hover:bg-slate-50/70 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(180px,1fr)_140px_110px_85px_170px_36px] xl:gap-5 xl:px-5 xl:py-4"
                     key={task.id}
                   >
-                    <div className="min-w-0 text-left">
-                      <span className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    <div className="col-start-1 row-start-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                         {task.code} · {task.tag}
                       </span>
-                      <span className={`mt-1.5 inline-block max-w-40 truncate rounded-md px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal ${projectStyles[task.project.color]}`}>
+                      <span className={`inline-block max-w-40 truncate rounded-md px-2 py-0.5 text-[10px] font-semibold ${projectStyles[task.project.color]}`}>
                         {task.project.name}
                       </span>
-                      <span className="mt-1 block truncate text-sm font-semibold text-slate-800">
+                    </div>
+                    <div className="col-start-1 row-start-2 min-w-0 self-center text-left">
+                      <span className="line-clamp-2 text-base font-bold leading-snug text-slate-900 sm:text-lg xl:line-clamp-1">
                         {task.title}
                       </span>
                       {task.description ? (
@@ -177,10 +179,10 @@ export function TaskListView({
                       ) : null}
                     </div>
 
-                    <label className="relative w-fit">
+                    <label className="relative col-start-2 row-start-2 w-32 justify-self-end sm:w-fit xl:row-start-1 xl:row-span-2 xl:w-full xl:justify-self-start">
                       <span className="sr-only">Status for {task.title}</span>
                       <select
-                        className={`cursor-pointer appearance-none rounded-lg border py-2 pl-3 pr-8 text-xs font-bold outline-none transition focus:ring-4 focus:ring-indigo-100 disabled:cursor-wait disabled:opacity-60 ${statusStyles[task.status]}`}
+                        className={`w-full cursor-pointer appearance-none rounded-lg border py-2 pl-3 pr-8 text-xs font-bold outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:cursor-wait disabled:opacity-60 sm:text-sm ${statusStyles[task.status]}`}
                         disabled={updatingStatusTaskId === task.id}
                         onChange={(event) => changeStatus(task, event.target.value as TaskStatus)}
                         value={task.status}
@@ -196,17 +198,18 @@ export function TaskListView({
                       </span>
                     </label>
 
-                    <span className={`w-fit rounded-lg px-2 py-1 text-[10px] font-bold tracking-wide ${priorityStyles[task.priority]}`}>
-                      {task.priority}
-                    </span>
-
-                    <p className="whitespace-nowrap text-xs text-slate-500">
-                      {formatDueDate(task.dueDate)}
-                    </p>
+                    <div className="col-start-1 row-start-3 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 xl:contents">
+                      <p className="whitespace-nowrap text-xs text-slate-500 xl:col-start-3 xl:row-start-1 xl:row-span-2">
+                        {formatDueDate(task.dueDate)}
+                      </p>
+                      <span className={`w-fit rounded-lg px-2 py-1 text-[10px] font-bold tracking-wide xl:col-start-4 xl:row-start-1 xl:row-span-2 ${priorityStyles[task.priority]}`}>
+                        {task.priority}
+                      </span>
+                    </div>
 
                     {task.assignees.length > 0 ? (
                       <div
-                        className="flex min-w-0 items-center gap-2"
+                        className="col-start-2 row-start-3 flex min-w-0 items-center justify-self-end gap-2 xl:col-start-5 xl:row-start-1 xl:row-span-2 xl:justify-self-start"
                         title={task.assignees.map((assignee) => assignee.name).join(", ")}
                       >
                         <div className="flex shrink-0 -space-x-2">
@@ -233,16 +236,16 @@ export function TaskListView({
                             </span>
                           ) : null}
                         </div>
-                        <span className="max-w-32 truncate text-xs text-slate-400">
+                        <span className="max-w-32 truncate text-sm text-slate-500">
                           {task.assignees.map((assignee) => assignee.name).join(", ")}
                         </span>
                       </div>
                     ) : (
-                      <p className="text-xs text-slate-400">No one</p>
+                      <p className="col-start-2 row-start-3 justify-self-end text-xs text-slate-400 xl:col-start-5 xl:row-start-1 xl:row-span-2 xl:justify-self-start">No one</p>
                     )}
 
                     <div
-                      className="relative flex justify-end"
+                      className="relative col-start-2 row-start-1 flex justify-self-end xl:col-start-6 xl:row-span-2"
                       ref={openTaskMenuId === task.id ? openMenuRef : undefined}
                     >
                       <button
@@ -261,7 +264,7 @@ export function TaskListView({
                       </button>
 
                       <div
-                        className={`absolute right-0 top-10 z-10 w-32 origin-top-right rounded-xl border border-slate-200 bg-white p-1 shadow-lg transition ${
+                        className={`absolute right-0 top-10 z-10 w-32 origin-top-right rounded-xl border border-slate-200 bg-white p-1 shadow-lg transition xl:bottom-10 xl:top-auto xl:origin-bottom-right ${
                           openTaskMenuId === task.id
                             ? "visible scale-100 opacity-100"
                             : "invisible scale-95 opacity-0"

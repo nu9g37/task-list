@@ -60,6 +60,7 @@ export function BoardClient({
   const [projects, setProjects] = useState(initialProjects);
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("overview");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [myTaskCount, setMyTaskCount] = useState(initialMyTaskCount);
   const [query, setQuery] = useState("");
   const [selectedAssigneeIds, setSelectedAssigneeIds] = useState<string[]>([]);
@@ -86,6 +87,15 @@ export function BoardClient({
   const hasActiveFilters = selectedAssigneeIds.length > 0 || selectedPriority !== null;
   const activeQueryKey = JSON.stringify([workspaceView, selectedProjectId, query, selectedPriority, selectedAssigneeIds]);
   const activeQueryRef = useRef(activeQueryKey);
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setMobileNavOpen(false);
+    }
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [mobileNavOpen]);
+
   useEffect(() => {
     activeQueryRef.current = activeQueryKey;
   }, [activeQueryKey]);
@@ -681,6 +691,8 @@ export function BoardClient({
       <div className="mx-auto flex min-h-screen max-w-[1800px] lg:h-full lg:min-h-0">
         <Sidebar
           activeView={workspaceView}
+          mobileOpen={mobileNavOpen}
+          onClose={() => setMobileNavOpen(false)}
           onAddProject={() => {
             setProjectError(undefined);
             setProjectDialog("create");
@@ -703,9 +715,18 @@ export function BoardClient({
           onProfile={() => setProfileOpen(true)}
         />
 
-        <section className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:min-h-0 lg:overflow-y-auto lg:overscroll-y-contain lg:px-10 lg:py-8">
-          <header className="mb-8 flex items-center justify-between gap-4 lg:hidden">
+        <section className="min-w-0 flex-1 px-4 py-4 sm:px-6 sm:py-5 lg:min-h-0 lg:overflow-y-auto lg:overscroll-y-contain lg:px-10 lg:py-8">
+          <header className="mb-5 flex items-center justify-between gap-4 lg:hidden">
             <div className="flex items-center gap-3">
+              <button
+                aria-expanded={mobileNavOpen}
+                aria-label="Open navigation"
+                className="grid size-10 place-items-center rounded-xl text-slate-600 hover:bg-slate-100 lg:hidden"
+                onClick={() => setMobileNavOpen(true)}
+                type="button"
+              >
+                <span aria-hidden="true" className="text-2xl leading-none">☰</span>
+              </button>
               <div className="grid size-10 place-items-center rounded-2xl bg-indigo-600 text-sm font-black text-white shadow-lg shadow-indigo-200">
                 T
               </div>
@@ -722,9 +743,9 @@ export function BoardClient({
             </button>
           </header>
 
-          <div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div className="mb-6 flex flex-col gap-4 sm:mb-8 xl:flex-row xl:items-end xl:justify-between">
             <div>
-              <div className="mb-2 flex items-center gap-2 text-sm font-medium text-slate-400">
+              <div className="mb-2 hidden items-center gap-2 text-sm font-medium text-slate-400 lg:flex">
                 {workspaceView === "my-tasks" ? (
                   <span className="text-slate-600">My tasks</span>
                 ) : workspaceView === "calendar" ? (
@@ -735,7 +756,7 @@ export function BoardClient({
                   <><span>Projects</span><span>/</span><span className="text-slate-600">{selectedProject?.name ?? "No project"}</span></>
                 )}
               </div>
-              <h1 className="text-3xl font-bold tracking-tight text-slate-950 sm:text-4xl">
+              <h1 className="text-2xl font-bold tracking-tight text-slate-950 lg:text-4xl">
                 {workspaceView === "my-tasks"
                   ? "My tasks"
                   : workspaceView === "calendar"
@@ -744,7 +765,7 @@ export function BoardClient({
                       ? "Overview"
                   : selectedProject?.name ?? "Create your first project"}
               </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base">
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500 lg:text-base">
                 {workspaceView === "my-tasks"
                   ? "Tasks assigned to you across all projects."
                   : workspaceView === "calendar"
@@ -873,7 +894,7 @@ export function BoardClient({
                       {searchControl}
                       {filterControl}
                     </div>
-                    <div className="grid items-start gap-5 overflow-x-auto pb-6 md:grid-cols-3">
+                    <div className="grid grid-cols-1 items-start gap-4 pb-6 lg:flex lg:gap-5 lg:overflow-x-auto 2xl:grid 2xl:grid-cols-3">
                       {boardColumns.map((column) => (
                         <BoardColumn
                           canAdd={workspaceView === "project"}

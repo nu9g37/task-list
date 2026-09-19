@@ -94,7 +94,7 @@ export function TaskCalendarView({ tasks, onDelete, onEdit, onStatusChange }: Ta
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-5 sm:px-6">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-indigo-600">Calendar</p>
-            <h2 className="mt-1 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
+            <h2 className="mt-1 text-2xl font-bold tracking-tight text-slate-900 sm:text-4xl">
               {new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" }).format(displayedMonth)}
             </h2>
           </div>
@@ -112,7 +112,7 @@ export function TaskCalendarView({ tasks, onDelete, onEdit, onStatusChange }: Ta
         </div>
 
         <div className="overflow-x-auto">
-          <div className="min-w-[700px]">
+          <div className="w-full">
             <div className="grid grid-cols-7 bg-[#102a5b] text-center text-xs font-semibold text-white">
               {weekdays.map((weekday, index) => (
                 <div className="py-2.5" key={weekday}>
@@ -132,15 +132,16 @@ export function TaskCalendarView({ tasks, onDelete, onEdit, onStatusChange }: Ta
                   <button
                     aria-label={`${new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(day)}, ${dailyTasks.length} tasks`}
                     aria-pressed={isSelected}
-                    className={`min-h-28 min-w-0 border-b border-r border-slate-200 p-2 text-left align-top transition hover:bg-indigo-50/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-500 sm:min-h-32 ${isSelected ? "bg-indigo-50 ring-2 ring-inset ring-indigo-500" : isCurrentMonth ? "bg-white" : "bg-slate-50/80"}`}
+                    className={`min-h-14 min-w-0 border-b border-r border-slate-200 p-1 text-center align-top transition hover:bg-indigo-50/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-500 sm:min-h-32 sm:p-2 sm:text-left ${isSelected ? "bg-indigo-50 ring-2 ring-inset ring-indigo-500" : isCurrentMonth ? "bg-white" : "bg-slate-50/80"}`}
                     key={key}
                     onClick={() => selectDay(day)}
                     type="button"
                   >
-                    <span className={`mb-2 inline-grid size-7 place-items-center rounded-full text-xs font-bold ${key === todayKey ? "bg-indigo-600 text-white" : isCurrentMonth ? "text-slate-700" : "text-slate-400"}`}>
+                    <span className={`inline-grid size-6 place-items-center rounded-full text-xs font-bold sm:mb-2 sm:size-7 ${key === todayKey ? "bg-indigo-600 text-white" : isCurrentMonth ? "text-slate-700" : "text-slate-400"}`}>
                       {day.getDate()}
                     </span>
-                    <span className="block space-y-1">
+                    {dailyTasks.length > 0 ? <span className="mx-auto mt-1 block size-1.5 rounded-full bg-indigo-500 sm:hidden" /> : null}
+                    <span className="hidden space-y-1 sm:block">
                       {dailyTasks.slice(0, 2).map((task) => (
                         <span className={`block truncate rounded border-l-[3px] px-1.5 py-1 text-[11px] font-semibold ${priorityStyles[task.priority]}`} key={task.id} title={`${task.code} · ${task.title}`}>
                           {task.title}

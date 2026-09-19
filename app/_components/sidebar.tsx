@@ -3,6 +3,7 @@ import { UserAvatar } from "./user-avatar";
 
 type SidebarProps = {
   activeView: "project" | "my-tasks" | "calendar" | "overview";
+  mobileOpen: boolean;
   projects: Project[];
   selectedProjectId: string | null;
   taskCount: number;
@@ -10,6 +11,7 @@ type SidebarProps = {
   userEmail: string;
   userImage: string | null;
   onAddProject: () => void;
+  onClose: () => void;
   onDeleteProject: (project: Project) => void;
   onEditProject: (project: Project) => void;
   onMyTasks: () => void;
@@ -29,6 +31,7 @@ const projectDotColors: Record<ProjectColor, string> = {
 
 export function Sidebar({
   activeView,
+  mobileOpen,
   projects,
   selectedProjectId,
   taskCount,
@@ -36,6 +39,7 @@ export function Sidebar({
   userEmail,
   userImage,
   onAddProject,
+  onClose,
   onDeleteProject,
   onEditProject,
   onMyTasks,
@@ -51,15 +55,18 @@ export function Sidebar({
   ];
 
   return (
-    <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white px-5 py-7 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden">
-      <div className="mb-10 flex items-center gap-3 px-2">
+    <>
+    {mobileOpen ? <button aria-label="Close navigation" className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden" onClick={onClose} type="button" /> : null}
+    <aside className={`${mobileOpen ? "fixed inset-y-0 left-0 z-50 flex h-dvh" : "hidden"} w-72 max-w-[85vw] shrink-0 flex-col overflow-hidden border-r border-slate-200 bg-white px-5 py-6 shadow-xl lg:static lg:flex lg:h-full lg:min-h-0 lg:w-64 lg:max-w-none lg:px-5 lg:py-7 lg:shadow-none`}>
+      <div className="mb-8 flex items-center gap-3 px-2 lg:mb-10">
         <div className="grid size-11 place-items-center rounded-2xl bg-indigo-600 font-black text-white shadow-lg shadow-indigo-200">
           T
         </div>
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="text-lg font-bold tracking-tight text-slate-900">Tasklist</p>
           <p className="text-xs text-slate-400">Student workspace</p>
         </div>
+        <button aria-label="Close navigation" className="grid size-9 place-items-center rounded-lg text-xl text-slate-500 hover:bg-slate-100 lg:hidden" onClick={onClose} type="button">×</button>
       </div>
 
       <nav aria-label="Main navigation" className="space-y-1">
@@ -75,7 +82,12 @@ export function Sidebar({
                   : "cursor-default text-slate-400"
             }`}
             key={item.label}
-            onClick={item.label === "Overview" ? onOverview : item.label === "My tasks" ? onMyTasks : item.label === "Calendar" ? onCalendar : undefined}
+            onClick={() => {
+              onClose();
+              if (item.label === "Overview") onOverview();
+              else if (item.label === "My tasks") onMyTasks();
+              else onCalendar();
+            }}
             type="button"
           >
             <span>{item.label}</span>
@@ -96,7 +108,7 @@ export function Sidebar({
           <button
             aria-label="Add project"
             className="text-lg leading-none text-slate-400 transition hover:text-indigo-600"
-            onClick={onAddProject}
+            onClick={() => { onClose(); onAddProject(); }}
             type="button"
           >
             +
@@ -114,17 +126,17 @@ export function Sidebar({
                       ? "bg-indigo-50 text-indigo-700"
                       : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
                   }`}
-                  onClick={() => onSelectProject(project.id)}
+                  onClick={() => { onClose(); onSelectProject(project.id); }}
                   type="button"
                 >
                   <span className={`size-2.5 shrink-0 rounded-full ${projectDotColors[project.color]}`} />
                   <span className="truncate">{project.name}</span>
                 </button>
-                <div className="absolute inset-y-0 right-2 flex items-center gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+                <div className="absolute inset-y-0 right-2 flex items-center gap-1 transition lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
                   <button
                     aria-label={`Edit ${project.name}`}
                     className="grid size-6 place-items-center rounded text-xs text-slate-400 hover:bg-white hover:text-indigo-600"
-                    onClick={() => onEditProject(project)}
+                    onClick={() => { onClose(); onEditProject(project); }}
                     title="Edit project"
                     type="button"
                   >
@@ -133,7 +145,7 @@ export function Sidebar({
                   <button
                     aria-label={`Delete ${project.name}`}
                     className="grid size-6 place-items-center rounded text-sm text-slate-400 hover:bg-white hover:text-rose-600"
-                    onClick={() => onDeleteProject(project)}
+                    onClick={() => { onClose(); onDeleteProject(project); }}
                     title="Delete project"
                     type="button"
                   >
@@ -149,12 +161,13 @@ export function Sidebar({
       <button
         aria-label={`Open profile for ${userName}`}
         className="mt-5 flex w-full shrink-0 items-center gap-3 border-t border-slate-200 px-2 pt-5 text-left transition hover:text-indigo-600"
-        onClick={onProfile}
+        onClick={() => { onClose(); onProfile(); }}
         type="button"
       >
         <UserAvatar email={userEmail} image={userImage} name={userName} />
         <span className="min-w-0 truncate text-sm font-semibold text-slate-800">{userName}</span>
       </button>
     </aside>
+    </>
   );
 }

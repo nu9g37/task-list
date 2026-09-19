@@ -21,7 +21,7 @@ export function BoardColumn({
   onDelete,
 }: BoardColumnProps) {
   return (
-    <section className="min-w-[280px] rounded-3xl bg-slate-100/80 p-3 sm:p-4">
+    <section className="min-w-0 rounded-3xl bg-slate-100/80 p-3 sm:min-w-[280px] sm:p-4">
       <div className="mb-4 flex items-center justify-between px-1">
         <div className="flex items-center gap-2.5">
           <span className={`size-2.5 rounded-full ${column.dotColor}`} />

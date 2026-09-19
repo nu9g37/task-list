@@ -40,17 +40,17 @@ export function TaskOverviewView({ tasks, partial, onDelete, onEdit, onStatusCha
 
   return (
     <div className="pb-8">
-      <section aria-label="Task status summary" className="grid gap-4 sm:grid-cols-3">
+      <section aria-label="Task status summary" className="grid grid-cols-3 gap-2 sm:gap-4">
         {statusCards.map((card) => (
-          <div className={`rounded-2xl border p-5 shadow-sm ${card.style}`} key={card.status}>
-            <div className="flex items-center gap-2.5 text-sm font-semibold text-slate-600">
-              <span aria-hidden="true" className={`size-2.5 rounded-full ${card.dot}`} />
+          <div className={`min-w-0 rounded-2xl border p-3 shadow-sm sm:p-5 ${card.style}`} key={card.status}>
+            <div className="flex items-start gap-1.5 text-[11px] font-semibold leading-4 text-slate-600 sm:items-center sm:gap-2.5 sm:text-sm">
+              <span aria-hidden="true" className={`mt-1 size-2 shrink-0 rounded-full sm:mt-0 sm:size-2.5 ${card.dot}`} />
               {card.label}
             </div>
-            <p className="mt-5 text-4xl font-bold tracking-tight text-slate-900">
+            <p className="mt-3 text-2xl font-bold tracking-tight text-slate-900 sm:mt-5 sm:text-4xl">
               {tasks.filter((task) => task.status === card.status).length}
             </p>
-            <p className="mt-1 text-xs text-slate-500">{partial ? "loaded tasks" : "tasks"}</p>
+            <p className="mt-1 text-[11px] text-slate-500 sm:text-xs">{partial ? "loaded tasks" : "tasks"}</p>
           </div>
         ))}
       </section>
