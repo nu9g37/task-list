@@ -38,6 +38,8 @@ type DialogState =
 type ProjectView = "board" | "list" | "calendar";
 type TaskApiResponse = Parameters<typeof toTask>[0];
 type LoadedTaskPage = Awaited<ReturnType<typeof readTaskPage>>;
+type CachedTaskPage = { result: LoadedTaskPage; loadedAt: number };
+const TASK_CACHE_MS = 30_000;
 
 export function BoardClient({
   initialTasks,
@@ -56,7 +58,13 @@ export function BoardClient({
   const [hasMoreTasks, setHasMoreTasks] = useState(initialTasks.length < initialTaskTotal);
   const [taskPage, setTaskPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
-  const lastFilterKey = useRef("");
+  const taskCache = useRef(new Map<string, CachedTaskPage>([
+    [taskPageUrl("overview", initialProjectId, 1, "", null, []), {
+      result: { tasks: initialTasks, total: initialTaskTotal, hasMore: initialTasks.length < initialTaskTotal },
+      loadedAt: 0,
+    }],
+  ]));
+  const cacheVersion = useRef(0);
   const [projects, setProjects] = useState(initialProjects);
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("overview");
@@ -110,11 +118,46 @@ export function BoardClient({
     setTaskPage(1);
   }
 
+  function getCachedTaskPage(url: string) {
+    const cached = taskCache.current.get(url);
+    if (!cached) return null;
+    if (cached.loadedAt === 0) cached.loadedAt = Date.now();
+    return cached;
+  }
+
+  function invalidateTaskCache() {
+    cacheVersion.current += 1;
+    taskCache.current.clear();
+  }
+
+  function openWorkspace(view: WorkspaceView, projectId = selectedProjectId) {
+    if (workspaceView === view && (view !== "project" || projectId === selectedProjectId)) {
+      if (view === "project" || view === "my-tasks") setProjectView("board");
+      return;
+    }
+
+    const url = taskPageUrl(view, projectId, 1, "", null, []);
+    const cached = getCachedTaskPage(url);
+    activeQueryRef.current = JSON.stringify([view, view === "project" ? projectId : selectedProjectId, "", null, []]);
+    setPageError(undefined);
+    if (view === "project") setSelectedProjectId(projectId);
+    setWorkspaceView(view);
+    if (view === "project" || view === "my-tasks") setProjectView("board");
+    resetSearchAndFilters();
+    setMembersDialogOpen(false);
+    showFirstTaskPage(cached?.result ?? { tasks: [], total: 0, hasMore: false });
+    setLoadingProject(!cached);
+    if (view === "my-tasks" && cached) setMyTaskCount(cached.result.total);
+  }
+
   async function refreshCurrentTasks() {
     const key = activeQueryRef.current;
+    const version = cacheVersion.current;
+    const canCache = !query.trim() && !selectedPriority && selectedAssigneeIds.length === 0;
     try {
       const result = await readTaskPage(taskPageUrl(workspaceView, selectedProjectId, 1, query, selectedPriority, selectedAssigneeIds));
-      if (activeQueryRef.current !== key) return;
+      if (activeQueryRef.current !== key || cacheVersion.current !== version) return;
+      if (canCache) taskCache.current.set(taskPageUrl(workspaceView, selectedProjectId, 1, query, selectedPriority, selectedAssigneeIds), { result, loadedAt: Date.now() });
       showFirstTaskPage(result);
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to refresh tasks.");
@@ -122,24 +165,32 @@ export function BoardClient({
   }
 
   useEffect(() => {
-    const key = JSON.stringify([workspaceView, selectedProjectId, query, selectedPriority, selectedAssigneeIds]);
-    if (!lastFilterKey.current) {
-      lastFilterKey.current = key;
-      return;
-    }
-    if (lastFilterKey.current === key) return;
-    lastFilterKey.current = key;
     if (workspaceView === "project" && !selectedProjectId) return;
+    const url = taskPageUrl(workspaceView, selectedProjectId, 1, query, selectedPriority, selectedAssigneeIds);
+    const canCache = !query.trim() && !selectedPriority && selectedAssigneeIds.length === 0;
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      readTaskPage(taskPageUrl(workspaceView, selectedProjectId, 1, query, selectedPriority, selectedAssigneeIds), controller.signal)
+      const cached = canCache ? getCachedTaskPage(url) : null;
+      if (cached && Date.now() - cached.loadedAt < TASK_CACHE_MS) {
+        showFirstTaskPage(cached.result);
+        setLoadingProject(false);
+        return;
+      }
+      const version = cacheVersion.current;
+      readTaskPage(url, controller.signal)
         .then((result) => {
+          if (controller.signal.aborted || cacheVersion.current !== version) return;
+          if (canCache) taskCache.current.set(url, { result, loadedAt: Date.now() });
           showFirstTaskPage(result);
+          if (workspaceView === "my-tasks" && !query && !selectedPriority && selectedAssigneeIds.length === 0) setMyTaskCount(result.total);
         })
         .catch((error) => {
           if (error instanceof Error && error.name !== "AbortError") setPageError(error.message);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoadingProject(false);
         });
-    }, 250);
+    }, query || selectedPriority || selectedAssigneeIds.length ? 250 : 0);
     return () => {
       clearTimeout(timer);
       controller.abort();
@@ -148,10 +199,13 @@ export function BoardClient({
 
   async function loadMoreTasks() {
     if (loadingMore || !hasMoreTasks) return;
+    const key = activeQueryRef.current;
+    const version = cacheVersion.current;
     setLoadingMore(true);
     try {
       const nextPage = taskPage + 1;
       const result = await readTaskPage(taskPageUrl(workspaceView, selectedProjectId, nextPage, query, selectedPriority, selectedAssigneeIds));
+      if (activeQueryRef.current !== key || cacheVersion.current !== version) return;
       setTasks((current) => [...current, ...result.tasks.filter((item) => !current.some((task) => task.id === item.id))]);
       setTaskTotal(result.total);
       setHasMoreTasks(result.hasMore);
@@ -286,6 +340,7 @@ export function BoardClient({
 
       if (!response.ok) throw new Error(await readApiError(response));
 
+      invalidateTaskCache();
       const savedTask = toTask((await response.json()) as TaskApiResponse);
       const wasAssignedToMe = editing
         ? dialog.task.assignees.some((assignee) => assignee.id === userId)
@@ -328,6 +383,7 @@ export function BoardClient({
     try {
       const response = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
       if (!response.ok) throw new Error(await readApiError(response));
+      invalidateTaskCache();
       setTasks((current) => current.filter((item) => item.id !== task.id));
       setTaskTotal((current) => Math.max(0, current - 1));
       if (task.assignees.some((assignee) => assignee.id === userId)) {
@@ -357,6 +413,7 @@ export function BoardClient({
       });
       if (!response.ok) throw new Error(await readApiError(response));
 
+      invalidateTaskCache();
       const savedTask = toTask((await response.json()) as TaskApiResponse);
       setTasks((current) =>
         current.map((item) => (item.id === savedTask.id ? savedTask : item)),
@@ -367,89 +424,20 @@ export function BoardClient({
     }
   }
 
-  async function selectProject(projectId: string) {
-    if (loadingProject) return;
-    if (projectId === selectedProjectId && workspaceView === "project") {
-      setProjectView("board");
-      return;
-    }
-    setLoadingProject(true);
-    setPageError(undefined);
-
-    try {
-      const result = await readTaskPage(taskPageUrl("project", projectId, 1, "", null, []));
-      setSelectedProjectId(projectId);
-      setWorkspaceView("project");
-      setProjectView("board");
-      showFirstTaskPage(result);
-      resetSearchAndFilters();
-      setMembersDialogOpen(false);
-    } catch (error) {
-      setPageError(error instanceof Error ? error.message : "Unable to load project.");
-    } finally {
-      setLoadingProject(false);
-    }
+  function selectProject(projectId: string) {
+    openWorkspace("project", projectId);
   }
 
-  async function openMyTasks() {
-    if (loadingProject) return;
-    if (workspaceView === "my-tasks") {
-      setProjectView("board");
-      return;
-    }
-    setLoadingProject(true);
-    setPageError(undefined);
-
-    try {
-      const result = await readTaskPage(taskPageUrl("my-tasks", selectedProjectId, 1, "", null, []));
-      showFirstTaskPage(result);
-      setMyTaskCount(result.total);
-      setWorkspaceView("my-tasks");
-      setProjectView("board");
-      resetSearchAndFilters();
-      setMembersDialogOpen(false);
-    } catch (error) {
-      setPageError(error instanceof Error ? error.message : "Unable to load your tasks.");
-    } finally {
-      setLoadingProject(false);
-    }
+  function openMyTasks() {
+    openWorkspace("my-tasks");
   }
 
-  async function openCalendar() {
-    if (loadingProject) return;
-    if (workspaceView === "calendar") return;
-    setLoadingProject(true);
-    setPageError(undefined);
-
-    try {
-      const result = await readTaskPage(taskPageUrl("calendar", selectedProjectId, 1, "", null, []));
-      showFirstTaskPage(result);
-      setWorkspaceView("calendar");
-      resetSearchAndFilters();
-      setMembersDialogOpen(false);
-    } catch (error) {
-      setPageError(error instanceof Error ? error.message : "Unable to load calendar.");
-    } finally {
-      setLoadingProject(false);
-    }
+  function openCalendar() {
+    openWorkspace("calendar");
   }
 
-  async function openOverview() {
-    if (loadingProject || workspaceView === "overview") return;
-    setLoadingProject(true);
-    setPageError(undefined);
-
-    try {
-      const result = await readTaskPage(taskPageUrl("overview", selectedProjectId, 1, "", null, []));
-      showFirstTaskPage(result);
-      setWorkspaceView("overview");
-      resetSearchAndFilters();
-      setMembersDialogOpen(false);
-    } catch (error) {
-      setPageError(error instanceof Error ? error.message : "Unable to load overview.");
-    } finally {
-      setLoadingProject(false);
-    }
+  function openOverview() {
+    openWorkspace("overview");
   }
 
   async function saveProject(draft: ProjectDraft) {
@@ -466,6 +454,7 @@ export function BoardClient({
       });
       if (!response.ok) throw new Error(await readApiError(response));
 
+      invalidateTaskCache();
       const savedProject = (await response.json()) as Project;
       setProjects((current) =>
         editing
@@ -515,6 +504,7 @@ export function BoardClient({
     try {
       const response = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
       if (!response.ok) throw new Error(await readApiError(response));
+      invalidateTaskCache();
 
       const remaining = projects.filter((item) => item.id !== project.id);
       setProjects(remaining);
@@ -547,6 +537,7 @@ export function BoardClient({
   async function saveProfileName(name: string): Promise<string | undefined> {
     const result = await authClient.updateUser({ name });
     if (result.error) return result.error.message ?? "Unable to update your name.";
+    invalidateTaskCache();
     setProfileName(name);
     setTasks((current) => current.map((task) => ({
       ...task,
@@ -563,6 +554,7 @@ export function BoardClient({
   async function saveProfileImage(image: string): Promise<string | undefined> {
     const result = await authClient.updateUser({ image });
     if (result.error) return result.error.message ?? "Unable to update your picture.";
+    invalidateTaskCache();
     setProfileImage(image);
     setTasks((current) => current.map((task) => ({
       ...task,
@@ -894,6 +886,7 @@ export function BoardClient({
                   Showing {tasks.length} of {taskTotal} tasks. Load more to see the complete summary or calendar.
                 </p>
               ) : null}
+              {loadingProject ? <p className="mb-4 text-sm font-medium text-slate-500" role="status">Loading tasks...</p> : null}
               <div className={`transition ${loadingProject ? "opacity-50" : ""}`}>
                 {workspaceView === "overview" ? (
                   <TaskOverviewView
