@@ -4,6 +4,7 @@ import type { Task } from "@/app/_types/task";
 import type { Project, ProjectColor } from "@/app/_types/project";
 import { getCurrentSession } from "@/lib/auth-session";
 import { redirect } from "next/navigation";
+import { TASK_PAGE_SIZE } from "@/lib/tasks/page";
 
 export const dynamic = "force-dynamic";
 
@@ -17,8 +18,9 @@ export default async function Home() {
     orderBy: { createdAt: "asc" },
   });
   const project = projectRecords[0];
+  const taskWhere = { project: { members: { some: { userId: session.user.id } } } };
   const records = await prisma.task.findMany({
-    where: { project: { members: { some: { userId: session.user.id } } } },
+    where: taskWhere,
     include: {
       assignees: {
         include: {
@@ -27,8 +29,10 @@ export default async function Home() {
       },
       project: { select: { id: true, name: true, color: true } },
     },
-    orderBy: [{ position: "asc" }, { createdAt: "asc" }],
+    orderBy: [{ position: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+    take: TASK_PAGE_SIZE,
   });
+  const initialTaskTotal = await prisma.task.count({ where: taskWhere });
 
   const tasks: Task[] = records.map((task) => ({
     id: task.id,
@@ -58,6 +62,7 @@ export default async function Home() {
   return (
     <BoardClient
       initialTasks={tasks}
+      initialTaskTotal={initialTaskTotal}
       initialProjectId={project?.id ?? null}
       initialProjects={projects}
       userEmail={session.user.email}

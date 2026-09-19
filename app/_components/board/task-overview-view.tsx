@@ -7,6 +7,7 @@ import { TaskListView } from "./task-list-view";
 
 type TaskOverviewViewProps = {
   tasks: Task[];
+  partial?: boolean;
   onDelete: (task: Task) => void;
   onEdit: (task: Task) => void;
   onStatusChange: (task: Task, status: TaskStatus) => Promise<void>;
@@ -23,7 +24,7 @@ function dateKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-export function TaskOverviewView({ tasks, onDelete, onEdit, onStatusChange, toolbarActions }: TaskOverviewViewProps) {
+export function TaskOverviewView({ tasks, partial, onDelete, onEdit, onStatusChange, toolbarActions }: TaskOverviewViewProps) {
   const upcomingTasks = useMemo(() => {
     const today = new Date();
     const lastDay = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 6);
@@ -49,7 +50,7 @@ export function TaskOverviewView({ tasks, onDelete, onEdit, onStatusChange, tool
             <p className="mt-5 text-4xl font-bold tracking-tight text-slate-900">
               {tasks.filter((task) => task.status === card.status).length}
             </p>
-            <p className="mt-1 text-xs text-slate-500">tasks</p>
+            <p className="mt-1 text-xs text-slate-500">{partial ? "loaded tasks" : "tasks"}</p>
           </div>
         ))}
       </section>
@@ -57,7 +58,7 @@ export function TaskOverviewView({ tasks, onDelete, onEdit, onStatusChange, tool
       <section aria-label="Tasks due in the next 7 days" className="mt-8">
         <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Coming up</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-indigo-600">Coming up{partial ? " among loaded tasks" : ""}</p>
             <h2 className="mt-1 text-xl font-bold text-slate-900">Due in the next 7 days</h2>
           </div>
           <span className="text-sm font-medium text-slate-500">

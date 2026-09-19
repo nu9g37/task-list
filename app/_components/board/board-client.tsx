@@ -16,9 +16,11 @@ import { TaskOverviewView } from "./task-overview-view";
 import type { ProjectMembersResponse } from "@/app/_types/project-member";
 import { ProfileDialog } from "@/app/_components/profile-dialog";
 import { UserAvatar } from "@/app/_components/user-avatar";
+import { readApiError, readTaskPage, taskPageUrl, toTask, type WorkspaceView } from "./task-api";
 
 type BoardClientProps = {
   initialTasks: Task[];
+  initialTaskTotal: number;
   initialProjectId: string | null;
   initialProjects: Project[];
   initialMyTaskCount: number;
@@ -28,27 +30,18 @@ type BoardClientProps = {
   userImage: string | null;
 };
 
-type TaskApiResponse = Omit<Task, "dueDate"> & { dueDate: string | null };
-
 type DialogState =
   | { kind: "create"; status: TaskStatus }
   | { kind: "edit"; task: Task }
   | null;
 
 type ProjectView = "board" | "list" | "calendar";
-type WorkspaceView = "project" | "my-tasks" | "calendar" | "overview";
-
-function toTask(value: TaskApiResponse): Task {
-  return { ...value, dueDate: value.dueDate ?? undefined };
-}
-
-async function readApiError(response: Response) {
-  const data = (await response.json().catch(() => null)) as { error?: string } | null;
-  return data?.error ?? "Something went wrong. Please try again.";
-}
+type TaskApiResponse = Parameters<typeof toTask>[0];
+type LoadedTaskPage = Awaited<ReturnType<typeof readTaskPage>>;
 
 export function BoardClient({
   initialTasks,
+  initialTaskTotal,
   initialProjectId,
   initialProjects,
   initialMyTaskCount,
@@ -59,6 +52,11 @@ export function BoardClient({
 }: BoardClientProps) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initialTasks);
+  const [taskTotal, setTaskTotal] = useState(initialTaskTotal);
+  const [hasMoreTasks, setHasMoreTasks] = useState(initialTasks.length < initialTaskTotal);
+  const [taskPage, setTaskPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const lastFilterKey = useRef("");
   const [projects, setProjects] = useState(initialProjects);
   const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
   const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("overview");
@@ -86,6 +84,71 @@ export function BoardClient({
   const [profileOpen, setProfileOpen] = useState(false);
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
   const hasActiveFilters = selectedAssigneeIds.length > 0 || selectedPriority !== null;
+  const activeQueryKey = JSON.stringify([workspaceView, selectedProjectId, query, selectedPriority, selectedAssigneeIds]);
+  const activeQueryRef = useRef(activeQueryKey);
+  useEffect(() => {
+    activeQueryRef.current = activeQueryKey;
+  }, [activeQueryKey]);
+
+  function showFirstTaskPage(result: LoadedTaskPage) {
+    setTasks(result.tasks);
+    setTaskTotal(result.total);
+    setHasMoreTasks(result.hasMore);
+    setTaskPage(1);
+  }
+
+  async function refreshCurrentTasks() {
+    const key = activeQueryRef.current;
+    try {
+      const result = await readTaskPage(taskPageUrl(workspaceView, selectedProjectId, 1, query, selectedPriority, selectedAssigneeIds));
+      if (activeQueryRef.current !== key) return;
+      showFirstTaskPage(result);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Unable to refresh tasks.");
+    }
+  }
+
+  useEffect(() => {
+    const key = JSON.stringify([workspaceView, selectedProjectId, query, selectedPriority, selectedAssigneeIds]);
+    if (!lastFilterKey.current) {
+      lastFilterKey.current = key;
+      return;
+    }
+    if (lastFilterKey.current === key) return;
+    lastFilterKey.current = key;
+    if (workspaceView === "project" && !selectedProjectId) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      readTaskPage(taskPageUrl(workspaceView, selectedProjectId, 1, query, selectedPriority, selectedAssigneeIds), controller.signal)
+        .then((result) => {
+          showFirstTaskPage(result);
+        })
+        .catch((error) => {
+          if (error instanceof Error && error.name !== "AbortError") setPageError(error.message);
+        });
+    }, 250);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [workspaceView, selectedProjectId, query, selectedPriority, selectedAssigneeIds]);
+
+  async function loadMoreTasks() {
+    if (loadingMore || !hasMoreTasks) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = taskPage + 1;
+      const result = await readTaskPage(taskPageUrl(workspaceView, selectedProjectId, nextPage, query, selectedPriority, selectedAssigneeIds));
+      setTasks((current) => [...current, ...result.tasks.filter((item) => !current.some((task) => task.id === item.id))]);
+      setTaskTotal(result.total);
+      setHasMoreTasks(result.hasMore);
+      setTaskPage(nextPage);
+    } catch (error) {
+      setPageError(error instanceof Error ? error.message : "Unable to load more tasks.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   const availableAssignees = useMemo(() => {
     const people = new Map<string, TaskAssignee>();
@@ -208,6 +271,7 @@ export function BoardClient({
         setMyTaskCount((current) => Math.max(0, current + (isAssignedToMe ? 1 : -1)));
       }
       if (!editing) {
+        setTaskTotal((current) => current + 1);
         setProjects((current) =>
           current.map((project) =>
             project.id === selectedProjectId
@@ -217,6 +281,7 @@ export function BoardClient({
         );
       }
       setDialog(null);
+      await refreshCurrentTasks();
     } catch (error) {
       setDialogError(error instanceof Error ? error.message : "Unable to save task.");
     } finally {
@@ -232,6 +297,7 @@ export function BoardClient({
       const response = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
       if (!response.ok) throw new Error(await readApiError(response));
       setTasks((current) => current.filter((item) => item.id !== task.id));
+      setTaskTotal((current) => Math.max(0, current - 1));
       if (task.assignees.some((assignee) => assignee.id === userId)) {
         setMyTaskCount((current) => Math.max(0, current - 1));
       }
@@ -242,6 +308,7 @@ export function BoardClient({
             : project,
         ),
       );
+      await refreshCurrentTasks();
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to delete task.");
     }
@@ -262,6 +329,7 @@ export function BoardClient({
       setTasks((current) =>
         current.map((item) => (item.id === savedTask.id ? savedTask : item)),
       );
+      await refreshCurrentTasks();
     } catch (error) {
       setPageError(error instanceof Error ? error.message : "Unable to update task status.");
     }
@@ -277,13 +345,11 @@ export function BoardClient({
     setPageError(undefined);
 
     try {
-      const response = await fetch(`/api/tasks?projectId=${encodeURIComponent(projectId)}`);
-      if (!response.ok) throw new Error(await readApiError(response));
-      const projectTasks = ((await response.json()) as TaskApiResponse[]).map(toTask);
+      const result = await readTaskPage(taskPageUrl("project", projectId, 1, "", null, []));
       setSelectedProjectId(projectId);
       setWorkspaceView("project");
       setProjectView("board");
-      setTasks(projectTasks);
+      showFirstTaskPage(result);
       resetSearchAndFilters();
       setMembersDialogOpen(false);
     } catch (error) {
@@ -303,11 +369,9 @@ export function BoardClient({
     setPageError(undefined);
 
     try {
-      const response = await fetch("/api/tasks?assignedToMe=true");
-      if (!response.ok) throw new Error(await readApiError(response));
-      const assignedTasks = ((await response.json()) as TaskApiResponse[]).map(toTask);
-      setTasks(assignedTasks);
-      setMyTaskCount(assignedTasks.length);
+      const result = await readTaskPage(taskPageUrl("my-tasks", selectedProjectId, 1, "", null, []));
+      showFirstTaskPage(result);
+      setMyTaskCount(result.total);
       setWorkspaceView("my-tasks");
       setProjectView("board");
       resetSearchAndFilters();
@@ -326,9 +390,8 @@ export function BoardClient({
     setPageError(undefined);
 
     try {
-      const response = await fetch("/api/tasks?allProjects=true");
-      if (!response.ok) throw new Error(await readApiError(response));
-      setTasks(((await response.json()) as TaskApiResponse[]).map(toTask));
+      const result = await readTaskPage(taskPageUrl("calendar", selectedProjectId, 1, "", null, []));
+      showFirstTaskPage(result);
       setWorkspaceView("calendar");
       resetSearchAndFilters();
       setMembersDialogOpen(false);
@@ -345,9 +408,8 @@ export function BoardClient({
     setPageError(undefined);
 
     try {
-      const response = await fetch("/api/tasks?allProjects=true");
-      if (!response.ok) throw new Error(await readApiError(response));
-      setTasks(((await response.json()) as TaskApiResponse[]).map(toTask));
+      const result = await readTaskPage(taskPageUrl("overview", selectedProjectId, 1, "", null, []));
+      showFirstTaskPage(result);
       setWorkspaceView("overview");
       resetSearchAndFilters();
       setMembersDialogOpen(false);
@@ -399,6 +461,9 @@ export function BoardClient({
         setWorkspaceView("project");
         setProjectView("board");
         setTasks([]);
+        setTaskTotal(0);
+        setHasMoreTasks(false);
+        setTaskPage(1);
         resetSearchAndFilters();
       }
       setProjectDialog(null);
@@ -422,25 +487,23 @@ export function BoardClient({
       const remaining = projects.filter((item) => item.id !== project.id);
       setProjects(remaining);
       if (workspaceView === "my-tasks" || workspaceView === "calendar" || workspaceView === "overview") {
-        const removedAssignedCount = tasks.filter(
-          (task) => task.project.id === project.id &&
-            task.assignees.some((assignee) => assignee.id === userId),
-        ).length;
-        setTasks((current) => current.filter((task) => task.project.id !== project.id));
-        setMyTaskCount((current) => Math.max(0, current - removedAssignedCount));
+        const result = await readTaskPage(taskPageUrl(workspaceView, selectedProjectId, 1, query, selectedPriority, selectedAssigneeIds));
+        showFirstTaskPage(result);
+        const assigned = await readTaskPage(taskPageUrl("my-tasks", null, 1, "", null, []));
+        setMyTaskCount(assigned.total);
         if (project.id === selectedProjectId) setSelectedProjectId(remaining[0]?.id ?? null);
       } else if (project.id === selectedProjectId) {
         if (remaining[0]) {
           setSelectedProjectId(remaining[0].id);
-          const tasksResponse = await fetch(
-            `/api/tasks?projectId=${encodeURIComponent(remaining[0].id)}`,
-          );
-          if (!tasksResponse.ok) throw new Error(await readApiError(tasksResponse));
-          setTasks(((await tasksResponse.json()) as TaskApiResponse[]).map(toTask));
+          const result = await readTaskPage(taskPageUrl("project", remaining[0].id, 1, "", null, []));
+          showFirstTaskPage(result);
           resetSearchAndFilters();
         } else {
           setSelectedProjectId(null);
           setTasks([]);
+          setTaskTotal(0);
+          setHasMoreTasks(false);
+          setTaskPage(1);
           resetSearchAndFilters();
         }
       }
@@ -781,9 +844,15 @@ export function BoardClient({
                 </nav>
               </div> : null}
 
+              {hasMoreTasks && (workspaceView === "overview" || workspaceView === "calendar" || projectView === "calendar") ? (
+                <p className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+                  Showing {tasks.length} of {taskTotal} tasks. Load more to see the complete summary or calendar.
+                </p>
+              ) : null}
               <div className={`transition ${loadingProject ? "opacity-50" : ""}`}>
                 {workspaceView === "overview" ? (
                   <TaskOverviewView
+                    partial={hasMoreTasks}
                     onDelete={deleteTask}
                     onEdit={openEdit}
                     onStatusChange={changeTaskStatus}
@@ -843,6 +912,13 @@ export function BoardClient({
                   />
                 )}
               </div>
+              {hasMoreTasks ? (
+                <div className="mt-6 flex justify-center">
+                  <button className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-indigo-600 shadow-sm disabled:opacity-50" disabled={loadingMore} onClick={loadMoreTasks} type="button">
+                    {loadingMore ? "Loading..." : `Load more tasks (${tasks.length} of ${taskTotal})`}
+                  </button>
+                </div>
+              ) : null}
             </>
           ) : null}
         </section>

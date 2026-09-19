@@ -1,35 +1,18 @@
 import { prisma } from "@/lib/prisma";
 import { getRequestSession } from "@/lib/auth-session";
+import { Prisma } from "@/app/generated/prisma/client";
+import { retryWriteConflict } from "@/lib/transaction-retry";
+import { wouldRemoveLastOwner } from "@/lib/owner-guard";
 
 export const runtime = "nodejs";
 
 type MemberRouteContext = { params: Promise<{ id: string; memberId: string }> };
-
-async function getAuthorizedMembership(projectId: string, userId: string) {
-  return prisma.projectMember.findUnique({
-    where: { projectId_userId: { projectId, userId } },
-  });
-}
-
-async function isLastOwner(projectId: string, memberId: string) {
-  const [member, ownerCount] = await Promise.all([
-    prisma.projectMember.findFirst({ where: { id: memberId, projectId } }),
-    prisma.projectMember.count({ where: { projectId, role: "OWNER" } }),
-  ]);
-  return member?.role === "OWNER" && ownerCount <= 1;
-}
 
 export async function PATCH(request: Request, { params }: MemberRouteContext) {
   const session = await getRequestSession(request);
   if (!session) return Response.json({ error: "Unauthorized." }, { status: 401 });
 
   const { id: projectId, memberId } = await params;
-  const requester = await getAuthorizedMembership(projectId, session.user.id);
-  if (!requester) return Response.json({ error: "Project not found." }, { status: 404 });
-  if (requester.role !== "OWNER") {
-    return Response.json({ error: "Only an owner can change member roles." }, { status: 403 });
-  }
-
   let body: unknown;
   try {
     body = await request.json();
@@ -42,17 +25,27 @@ export async function PATCH(request: Request, { params }: MemberRouteContext) {
   const role = input.role === "OWNER" ? "OWNER" : input.role === "MEMBER" ? "MEMBER" : null;
   if (!role) return Response.json({ error: "Invalid project role." }, { status: 400 });
 
-  const target = await prisma.projectMember.findFirst({ where: { id: memberId, projectId } });
-  if (!target) return Response.json({ error: "Member not found." }, { status: 404 });
-  if (role === "MEMBER" && (await isLastOwner(projectId, memberId))) {
-    return Response.json({ error: "A project must have at least one owner." }, { status: 400 });
-  }
-
-  const member = await prisma.projectMember.update({
-    where: { id: memberId },
-    data: { role },
-    include: { user: { select: { id: true, name: true, email: true, image: true } } },
-  });
+  const result = await retryWriteConflict(() => prisma.$transaction(async (tx) => {
+    const requester = await tx.projectMember.findUnique({
+      where: { projectId_userId: { projectId, userId: session.user.id } },
+    });
+    if (!requester) return { error: "Project not found.", status: 404 } as const;
+    if (requester.role !== "OWNER") return { error: "Only an owner can change member roles.", status: 403 } as const;
+    const target = await tx.projectMember.findFirst({ where: { id: memberId, projectId } });
+    if (!target) return { error: "Member not found.", status: 404 } as const;
+    if (target.role === "OWNER" && role === "MEMBER") {
+      const ownerCount = await tx.projectMember.count({ where: { projectId, role: "OWNER" } });
+      if (wouldRemoveLastOwner(target.role, role, ownerCount)) return { error: "A project must have at least one owner.", status: 400 } as const;
+    }
+    const member = await tx.projectMember.update({
+      where: { id: memberId },
+      data: { role },
+      include: { user: { select: { id: true, name: true, email: true, image: true } } },
+    });
+    return { member };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
+  if ("error" in result) return Response.json({ error: result.error }, { status: result.status });
+  const member = result.member;
   return Response.json({
     ...member,
     createdAt: member.createdAt.toISOString(),
@@ -65,29 +58,25 @@ export async function DELETE(request: Request, { params }: MemberRouteContext) {
   if (!session) return Response.json({ error: "Unauthorized." }, { status: 401 });
 
   const { id: projectId, memberId } = await params;
-  const requester = await getAuthorizedMembership(projectId, session.user.id);
-  if (!requester) return Response.json({ error: "Project not found." }, { status: 404 });
-  if (requester.role !== "OWNER") {
-    return Response.json({ error: "Only an owner can remove members." }, { status: 403 });
-  }
-
-  const target = await prisma.projectMember.findFirst({ where: { id: memberId, projectId } });
-  if (!target) return Response.json({ error: "Member not found." }, { status: 404 });
-  if (target.userId === session.user.id) {
-    return Response.json(
-      { error: "You cannot remove yourself. Ask another owner to remove you." },
-      { status: 400 },
-    );
-  }
-  if (await isLastOwner(projectId, memberId)) {
-    return Response.json({ error: "A project must have at least one owner." }, { status: 400 });
-  }
-
-  await prisma.$transaction([
-    prisma.taskAssignee.deleteMany({
-      where: { userId: target.userId, task: { projectId } },
-    }),
-    prisma.projectMember.delete({ where: { id: memberId } }),
-  ]);
+  const result = await retryWriteConflict(() => prisma.$transaction(async (tx) => {
+    const requester = await tx.projectMember.findUnique({
+      where: { projectId_userId: { projectId, userId: session.user.id } },
+    });
+    if (!requester) return { error: "Project not found.", status: 404 } as const;
+    if (requester.role !== "OWNER") return { error: "Only an owner can remove members.", status: 403 } as const;
+    const target = await tx.projectMember.findFirst({ where: { id: memberId, projectId } });
+    if (!target) return { error: "Member not found.", status: 404 } as const;
+    if (target.userId === session.user.id) {
+      return { error: "You cannot remove yourself. Ask another owner to remove you.", status: 400 } as const;
+    }
+    if (target.role === "OWNER") {
+      const ownerCount = await tx.projectMember.count({ where: { projectId, role: "OWNER" } });
+      if (wouldRemoveLastOwner(target.role, null, ownerCount)) return { error: "A project must have at least one owner.", status: 400 } as const;
+    }
+    await tx.taskAssignee.deleteMany({ where: { userId: target.userId, task: { projectId } } });
+    await tx.projectMember.delete({ where: { id: memberId } });
+    return { deleted: true } as const;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }));
+  if ("error" in result) return Response.json({ error: result.error }, { status: result.status });
   return new Response(null, { status: 204 });
 }

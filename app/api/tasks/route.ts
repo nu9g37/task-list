@@ -1,33 +1,12 @@
-import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import { parseTaskInput } from "@/lib/task-input";
+import { createWithUniqueTaskCode } from "@/lib/tasks/code";
+import { parseTaskInput } from "@/lib/tasks/input";
 import { getRequestSession } from "@/lib/auth-session";
+import { TASK_PAGE_SIZE, parseTaskPage } from "@/lib/tasks/page";
+import { areProjectMembers, serializeTask, taskInclude } from "@/lib/tasks/query";
+import { buildTaskWhere } from "@/lib/tasks/filter";
 
 export const runtime = "nodejs";
-
-const taskInclude = {
-  assignees: {
-    include: {
-      user: { select: { id: true, name: true, email: true, image: true } },
-    },
-  },
-  project: { select: { id: true, name: true, color: true } },
-} as const;
-
-function serializeTask<
-  T extends { assignees: { user: { id: string; name: string; email: string; image: string | null } }[] },
->(task: T) {
-  const { assignees, ...data } = task;
-  return { ...data, assignees: assignees.map((assignment) => assignment.user) };
-}
-
-async function areProjectMembers(projectId: string, userIds: string[]) {
-  if (userIds.length === 0) return true;
-  const count = await prisma.projectMember.count({
-    where: { projectId, userId: { in: userIds } },
-  });
-  return count === userIds.length;
-}
 
 async function getAccessibleProject(userId: string, projectId: string | null) {
   return prisma.project.findFirst({
@@ -44,46 +23,30 @@ export async function GET(request: Request) {
   if (!session) return Response.json({ error: "Unauthorized." }, { status: 401 });
 
   const url = new URL(request.url);
+  const page = parseTaskPage(url.searchParams);
+  if (!page) return Response.json({ error: "Invalid task query." }, { status: 400 });
   const allProjects = url.searchParams.get("allProjects") === "true";
-  if (allProjects) {
-    const tasks = await prisma.task.findMany({
-      where: { project: { members: { some: { userId: session.user.id } } } },
-      include: taskInclude,
-      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
-    });
-    return Response.json(tasks.map(serializeTask));
-  }
-
   const assignedToMe = url.searchParams.get("assignedToMe") === "true";
-  if (assignedToMe) {
-    const tasks = await prisma.task.findMany({
-      where: {
-        assignees: { some: { userId: session.user.id } },
-        project: { members: { some: { userId: session.user.id } } },
-      },
-      include: taskInclude,
-      orderBy: [{ position: "asc" }, { createdAt: "asc" }],
-    });
-    return Response.json(tasks.map(serializeTask));
-  }
-
   const requestedProjectId = url.searchParams.get("projectId");
-  const requestedProject = await getAccessibleProject(
-    session.user.id,
-    requestedProjectId,
-  );
-  if (requestedProjectId && !requestedProject) {
-    return Response.json({ error: "Project not found." }, { status: 404 });
+  let projectId: string | undefined;
+  if (!allProjects && !assignedToMe) {
+    const project = await getAccessibleProject(session.user.id, requestedProjectId);
+    if (!project && requestedProjectId) return Response.json({ error: "Project not found." }, { status: 404 });
+    if (!project) return Response.json({ items: [], total: 0, page: page.page, hasMore: false });
+    projectId = project.id;
   }
-  if (!requestedProject) return Response.json([]);
-  const project = requestedProject;
-  const tasks = await prisma.task.findMany({
-    where: { projectId: project.id },
-    include: taskInclude,
-    orderBy: [{ position: "asc" }, { createdAt: "asc" }],
-  });
-
-  return Response.json(tasks.map(serializeTask));
+  const where = buildTaskWhere(session.user.id, projectId, assignedToMe, page);
+  const [total, tasks] = await prisma.$transaction([
+    prisma.task.count({ where }),
+    prisma.task.findMany({
+      where,
+      include: taskInclude,
+      orderBy: [{ position: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+      skip: page.skip,
+      take: TASK_PAGE_SIZE,
+    }),
+  ]);
+  return Response.json({ items: tasks.map(serializeTask), total, page: page.page, hasMore: page.skip + tasks.length < total });
 }
 
 export async function POST(request: Request) {
@@ -95,11 +58,10 @@ export async function POST(request: Request) {
   if (!requestedProjectId) {
     return Response.json({ error: "Project is required." }, { status: 400 });
   }
-  const requestedProject = await getAccessibleProject(session.user.id, requestedProjectId);
-  if (!requestedProject) {
+  const project = await getAccessibleProject(session.user.id, requestedProjectId);
+  if (!project) {
     return Response.json({ error: "Project not found." }, { status: 404 });
   }
-  const project = requestedProject;
   let body: unknown;
 
   try {
@@ -128,9 +90,9 @@ export async function POST(request: Request) {
     select: { position: true },
   });
 
-  const task = await prisma.task.create({
+  const task = await createWithUniqueTaskCode((code) => prisma.task.create({
     data: {
-      code: `TSK-${randomUUID().slice(0, 6).toUpperCase()}`,
+      code,
       title: parsed.data.title!,
       description: parsed.data.description ?? "",
       status,
@@ -145,7 +107,7 @@ export async function POST(request: Request) {
       position: (lastTask?.position ?? -1) + 1,
     },
     include: taskInclude,
-  });
+  }));
 
   return Response.json(serializeTask(task), { status: 201 });
 }

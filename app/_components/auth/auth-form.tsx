@@ -30,27 +30,31 @@ export function AuthForm({ mode }: AuthFormProps) {
     }
     setSubmitting(true);
 
-    const result = isSignUp
-      ? await authClient.signUp.email({
-          name: name.trim(),
-          email: email.trim(),
-          password,
-          callbackURL: "/",
-        })
-      : await authClient.signIn.email({
-          email: email.trim(),
-          password,
-          callbackURL: "/",
-        });
+    try {
+      const result = isSignUp
+        ? await authClient.signUp.email({
+            name: name.trim(),
+            email: email.trim(),
+            password,
+            callbackURL: "/",
+          })
+        : await authClient.signIn.email({
+            email: email.trim(),
+            password,
+            callbackURL: "/",
+          });
 
-    if (result.error) {
-      setError(result.error.message ?? "Unable to continue. Please try again.");
+      if (result.error) {
+        setError(result.error.message ?? "Unable to continue. Please try again.");
+        return;
+      }
+      router.push("/");
+      router.refresh();
+    } catch {
+      setError("Unable to continue. Please try again.");
+    } finally {
       setSubmitting(false);
-      return;
     }
-
-    router.push("/");
-    router.refresh();
   }
 
   return (
