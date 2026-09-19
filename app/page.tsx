@@ -63,6 +63,7 @@ export default async function Home() {
       userEmail={session.user.email}
       userId={session.user.id}
       userName={session.user.name}
+      userImage={session.user.image ?? null}
       initialMyTaskCount={await prisma.taskAssignee.count({
         where: {
           userId: session.user.id,

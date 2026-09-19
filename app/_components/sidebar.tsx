@@ -1,10 +1,14 @@
 import type { Project, ProjectColor } from "@/app/_types/project";
+import { UserAvatar } from "./user-avatar";
 
 type SidebarProps = {
   activeView: "project" | "my-tasks" | "calendar" | "overview";
   projects: Project[];
   selectedProjectId: string | null;
   taskCount: number;
+  userName: string;
+  userEmail: string;
+  userImage: string | null;
   onAddProject: () => void;
   onDeleteProject: (project: Project) => void;
   onEditProject: (project: Project) => void;
@@ -12,6 +16,7 @@ type SidebarProps = {
   onOverview: () => void;
   onCalendar: () => void;
   onSelectProject: (projectId: string) => void;
+  onProfile: () => void;
 };
 
 const projectDotColors: Record<ProjectColor, string> = {
@@ -27,6 +32,9 @@ export function Sidebar({
   projects,
   selectedProjectId,
   taskCount,
+  userName,
+  userEmail,
+  userImage,
   onAddProject,
   onDeleteProject,
   onEditProject,
@@ -34,6 +42,7 @@ export function Sidebar({
   onOverview,
   onCalendar,
   onSelectProject,
+  onProfile,
 }: SidebarProps) {
   const navigation = [
     { label: "Overview", enabled: true },
@@ -42,7 +51,7 @@ export function Sidebar({
   ];
 
   return (
-    <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white px-5 py-7 lg:flex lg:flex-col">
+    <aside className="hidden w-64 shrink-0 border-r border-slate-200 bg-white px-5 py-7 lg:flex lg:h-full lg:min-h-0 lg:flex-col lg:overflow-hidden">
       <div className="mb-10 flex items-center gap-3 px-2">
         <div className="grid size-11 place-items-center rounded-2xl bg-indigo-600 font-black text-white shadow-lg shadow-indigo-200">
           T
@@ -79,7 +88,7 @@ export function Sidebar({
         ))}
       </nav>
 
-      <div className="mt-9">
+      <div className="mt-9 flex min-h-0 flex-1 flex-col">
         <div className="mb-3 flex items-center justify-between px-3">
           <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
             Projects
@@ -94,7 +103,7 @@ export function Sidebar({
           </button>
         </div>
 
-        <div className="space-y-1">
+        <div aria-label="Projects" className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain pr-1">
           {projects.map((project) => {
             const selected = activeView === "project" && project.id === selectedProjectId;
             return (
@@ -137,6 +146,15 @@ export function Sidebar({
         </div>
       </div>
 
+      <button
+        aria-label={`Open profile for ${userName}`}
+        className="mt-5 flex w-full shrink-0 items-center gap-3 border-t border-slate-200 px-2 pt-5 text-left transition hover:text-indigo-600"
+        onClick={onProfile}
+        type="button"
+      >
+        <UserAvatar email={userEmail} image={userImage} name={userName} />
+        <span className="min-w-0 truncate text-sm font-semibold text-slate-800">{userName}</span>
+      </button>
     </aside>
   );
 }

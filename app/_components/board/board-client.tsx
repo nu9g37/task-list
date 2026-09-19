@@ -14,6 +14,8 @@ import { TaskListView } from "./task-list-view";
 import { TaskCalendarView } from "./task-calendar-view";
 import { TaskOverviewView } from "./task-overview-view";
 import type { ProjectMembersResponse } from "@/app/_types/project-member";
+import { ProfileDialog } from "@/app/_components/profile-dialog";
+import { UserAvatar } from "@/app/_components/user-avatar";
 
 type BoardClientProps = {
   initialTasks: Task[];
@@ -23,6 +25,7 @@ type BoardClientProps = {
   userEmail: string;
   userId: string;
   userName: string;
+  userImage: string | null;
 };
 
 type TaskApiResponse = Omit<Task, "dueDate"> & { dueDate: string | null };
@@ -44,12 +47,6 @@ async function readApiError(response: Response) {
   return data?.error ?? "Something went wrong. Please try again.";
 }
 
-function getInitials(name: string, email: string) {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length > 1) return `${words[0][0]}${words.at(-1)?.[0]}`.toUpperCase();
-  return (words[0]?.slice(0, 2) || email.slice(0, 2)).toUpperCase();
-}
-
 export function BoardClient({
   initialTasks,
   initialProjectId,
@@ -58,6 +55,7 @@ export function BoardClient({
   userEmail,
   userId,
   userName,
+  userImage,
 }: BoardClientProps) {
   const router = useRouter();
   const [tasks, setTasks] = useState(initialTasks);
@@ -83,8 +81,9 @@ export function BoardClient({
   const [savingProject, setSavingProject] = useState(false);
   const [loadingProject, setLoadingProject] = useState(false);
   const [pageError, setPageError] = useState<string>();
-  const [signingOut, setSigningOut] = useState(false);
-  const userInitials = getInitials(userName, userEmail);
+  const [profileName, setProfileName] = useState(userName);
+  const [profileImage, setProfileImage] = useState(userImage);
+  const [profileOpen, setProfileOpen] = useState(false);
   const selectedProject = projects.find((project) => project.id === selectedProjectId);
   const hasActiveFilters = selectedAssigneeIds.length > 0 || selectedPriority !== null;
 
@@ -450,18 +449,48 @@ export function BoardClient({
     }
   }
 
-  async function signOut() {
-    setSigningOut(true);
+  async function saveProfileName(name: string): Promise<string | undefined> {
+    const result = await authClient.updateUser({ name });
+    if (result.error) return result.error.message ?? "Unable to update your name.";
+    setProfileName(name);
+    setTasks((current) => current.map((task) => ({
+      ...task,
+      assignees: task.assignees.map((assignee) =>
+        assignee.id === userId ? { ...assignee, name } : assignee,
+      ),
+    })));
+    setProjectMembers((current) => current.map((member) =>
+      member.id === userId ? { ...member, name } : member,
+    ));
+    return undefined;
+  }
+
+  async function saveProfileImage(image: string): Promise<string | undefined> {
+    const result = await authClient.updateUser({ image });
+    if (result.error) return result.error.message ?? "Unable to update your picture.";
+    setProfileImage(image);
+    setTasks((current) => current.map((task) => ({
+      ...task,
+      assignees: task.assignees.map((assignee) =>
+        assignee.id === userId ? { ...assignee, image } : assignee,
+      ),
+    })));
+    setProjectMembers((current) => current.map((member) =>
+      member.id === userId ? { ...member, image } : member,
+    ));
+    return undefined;
+  }
+
+  async function signOut(): Promise<string | undefined> {
     const result = await authClient.signOut();
 
     if (result.error) {
-      setPageError(result.error.message ?? "Unable to sign out.");
-      setSigningOut(false);
-      return;
+      return result.error.message ?? "Unable to sign out.";
     }
 
     router.push("/sign-in");
     router.refresh();
+    return undefined;
   }
 
   const searchControl = (
@@ -579,8 +608,8 @@ export function BoardClient({
   );
 
   return (
-    <main className="min-h-screen bg-[#f7f8fc] text-slate-950">
-      <div className="mx-auto flex min-h-screen max-w-[1800px]">
+    <main className="min-h-screen bg-[#f7f8fc] text-slate-950 lg:h-dvh lg:min-h-0 lg:overflow-hidden">
+      <div className="mx-auto flex min-h-screen max-w-[1800px] lg:h-full lg:min-h-0">
         <Sidebar
           activeView={workspaceView}
           onAddProject={() => {
@@ -599,11 +628,15 @@ export function BoardClient({
           projects={projects}
           selectedProjectId={selectedProjectId}
           taskCount={myTaskCount}
+          userEmail={userEmail}
+          userImage={profileImage}
+          userName={profileName}
+          onProfile={() => setProfileOpen(true)}
         />
 
-        <section className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-10 lg:py-8">
-          <header className="mb-8 flex flex-wrap items-center gap-4">
-            <div className="flex items-center gap-3 lg:hidden">
+        <section className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:min-h-0 lg:overflow-y-auto lg:overscroll-y-contain lg:px-10 lg:py-8">
+          <header className="mb-8 flex items-center justify-between gap-4 lg:hidden">
+            <div className="flex items-center gap-3">
               <div className="grid size-10 place-items-center rounded-2xl bg-indigo-600 text-sm font-black text-white shadow-lg shadow-indigo-200">
                 T
               </div>
@@ -611,19 +644,13 @@ export function BoardClient({
             </div>
 
             <button
-              className="ml-auto rounded-xl px-3 py-2 text-sm font-semibold text-slate-500 transition hover:bg-white hover:text-slate-900 disabled:opacity-60"
-              disabled={signingOut}
-              onClick={signOut}
+              aria-label="Open profile"
+              className="rounded-full"
+              onClick={() => setProfileOpen(true)}
               type="button"
             >
-              {signingOut ? "Signing out..." : "Sign out"}
+              <UserAvatar email={userEmail} image={profileImage} name={profileName} />
             </button>
-            <div
-              className="grid size-11 place-items-center rounded-2xl bg-amber-100 text-sm font-bold text-amber-700"
-              title={`${userName} (${userEmail})`}
-            >
-              {userInitials}
-            </div>
           </header>
 
           <div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
@@ -844,6 +871,18 @@ export function BoardClient({
           key={selectedProject.id}
           onClose={() => setMembersDialogOpen(false)}
           project={selectedProject}
+        />
+      ) : null}
+
+      {profileOpen ? (
+        <ProfileDialog
+          email={userEmail}
+          image={profileImage}
+          name={profileName}
+          onClose={() => setProfileOpen(false)}
+          onSaveName={saveProfileName}
+          onSaveImage={saveProfileImage}
+          onSignOut={signOut}
         />
       ) : null}
     </main>

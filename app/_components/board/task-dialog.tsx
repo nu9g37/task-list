@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import type { Task, TaskPriority, TaskStatus } from "@/app/_types/task";
+import type { Task, TaskAssignee, TaskPriority, TaskStatus } from "@/app/_types/task";
 import type { ProjectMember, ProjectMembersResponse } from "@/app/_types/project-member";
 
 export type TaskDraft = {
@@ -13,6 +13,12 @@ export type TaskDraft = {
   tag: string;
   assigneeIds: string[];
 };
+
+function getInitials(name: string, email: string) {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length > 1) return `${words[0][0]}${words.at(-1)?.[0]}`.toUpperCase();
+  return (words[0]?.slice(0, 2) || email.slice(0, 2)).toUpperCase();
+}
 
 type TaskDialogProps = {
   task?: Task;
@@ -79,17 +85,28 @@ export function TaskDialog({
       }
     }
 
+    function closeMenuOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setAssigneeMenuOpen(false);
+    }
+
     document.addEventListener("pointerdown", closeMenu);
-    return () => document.removeEventListener("pointerdown", closeMenu);
+    document.addEventListener("keydown", closeMenuOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeMenu);
+      document.removeEventListener("keydown", closeMenuOnEscape);
+    };
   }, [assigneeMenuOpen]);
 
-  const selectedMembers = members.filter((member) => draft.assigneeIds.includes(member.user.id));
-  const assigneeLabel =
-    selectedMembers.length === 0
-      ? "No one"
-      : selectedMembers.length === 1
-        ? selectedMembers[0].user.name
-        : `${selectedMembers.length} people`;
+  const selectedPeople = draft.assigneeIds
+    .map((id) => members.find((member) => member.user.id === id)?.user ?? task?.assignees.find((assignee) => assignee.id === id))
+    .filter((person): person is TaskAssignee => person !== undefined);
+  const visibleNames = selectedPeople.slice(0, 2).map((person) => person.name).join(", ");
+  const remainingCount = Math.max(0, draft.assigneeIds.length - 2);
+  const assigneeSummary = draft.assigneeIds.length === 0
+    ? "No one"
+    : selectedPeople.length === 0
+      ? membersLoading ? "Loading members..." : `${draft.assigneeIds.length} selected`
+      : `${visibleNames}${remainingCount > 0 ? `, +${remainingCount}` : ""}`;
 
   function toggleAssignee(userId: string) {
     update(
@@ -212,19 +229,35 @@ export function TaskDialog({
           </div>
 
           <div className="relative" ref={assigneeMenuRef}>
-            <label className="block text-sm font-semibold text-slate-700" id="assignee-label">
+            <span className="block text-sm font-semibold text-slate-700" id="assignee-label">
               Assignee
-            </label>
+            </span>
             <button
+              aria-controls="assignee-options"
               aria-expanded={assigneeMenuOpen}
-              aria-haspopup="listbox"
-              aria-labelledby="assignee-label"
-              className="mt-2 flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-left text-sm font-normal text-slate-700 outline-none transition hover:border-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+              aria-label={`Assignee: ${assigneeSummary}`}
+              className="mt-2 flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-left text-sm font-normal text-slate-700 outline-none transition hover:border-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
               onClick={() => setAssigneeMenuOpen((open) => !open)}
               type="button"
             >
-              <span className={selectedMembers.length === 0 ? "text-slate-400" : ""}>
-                {membersLoading ? "Loading members..." : assigneeLabel}
+              <span className="flex min-w-0 items-center gap-3">
+                {selectedPeople.length > 0 ? (
+                  <span className="flex shrink-0 -space-x-2" aria-hidden="true">
+                    {selectedPeople.slice(0, 2).map((person) => (
+                      <span className="grid size-7 place-items-center overflow-hidden rounded-full border-2 border-white bg-indigo-100 text-[10px] font-bold text-indigo-700" key={person.id}>
+                        {person.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img alt="" className="size-full object-cover" src={person.image} />
+                        ) : (
+                          getInitials(person.name, person.email)
+                        )}
+                      </span>
+                    ))}
+                  </span>
+                ) : null}
+                <span className={`min-w-0 truncate ${selectedPeople.length === 0 ? "text-slate-400" : ""}`}>
+                  {assigneeSummary}
+                </span>
               </span>
               <span className="text-xs text-slate-400">⌄</span>
             </button>
@@ -232,53 +265,38 @@ export function TaskDialog({
             {assigneeMenuOpen ? (
               <div
                 aria-labelledby="assignee-label"
-                className="absolute z-20 mt-2 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-xl"
-                role="listbox"
+                className="mt-2 max-h-40 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm"
+                id="assignee-options"
+                role="group"
               >
-                <button
-                  aria-selected={draft.assigneeIds.length === 0}
-                  className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
-                    draft.assigneeIds.length === 0
-                      ? "bg-indigo-50 font-semibold text-indigo-700"
-                      : "text-slate-600 hover:bg-slate-50"
-                  }`}
-                  onClick={() => update("assigneeIds", [])}
-                  role="option"
-                  type="button"
-                >
-                  <span className="grid size-5 place-items-center rounded border border-slate-300 text-xs">
-                    {draft.assigneeIds.length === 0 ? "✓" : ""}
-                  </span>
-                  No one
-                </button>
-
                 {members.map((member) => {
                   const selected = draft.assigneeIds.includes(member.user.id);
                   return (
-                    <button
-                      aria-selected={selected}
-                      className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm transition ${
+                    <label
+                      className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition ${
                         selected
                           ? "bg-indigo-50 font-semibold text-indigo-700"
                           : "text-slate-600 hover:bg-slate-50"
                       }`}
                       key={member.id}
-                      onClick={() => toggleAssignee(member.user.id)}
-                      role="option"
-                      type="button"
                     >
-                      <span className="grid size-5 place-items-center rounded border border-slate-300 text-xs">
-                        {selected ? "✓" : ""}
-                      </span>
+                      <input
+                        checked={selected}
+                        className="size-4 shrink-0 accent-indigo-600"
+                        onChange={() => toggleAssignee(member.user.id)}
+                        type="checkbox"
+                      />
                       <span className="min-w-0">
                         <span className="block truncate">{member.user.name}</span>
                         <span className="block truncate text-xs font-normal text-slate-400">
                           {member.user.email}
                         </span>
                       </span>
-                    </button>
+                    </label>
                   );
                 })}
+                {membersLoading ? <p className="px-3 py-2.5 text-sm text-slate-400">Loading members...</p> : null}
+                {!membersLoading && members.length === 0 ? <p className="px-3 py-2.5 text-sm text-slate-400">No members available</p> : null}
               </div>
             ) : null}
           </div>

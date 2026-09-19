@@ -15,13 +15,20 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState<string>();
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setSubmitting(true);
     setError(undefined);
+    if (isSignUp && password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    setSubmitting(true);
 
     const result = isSignUp
       ? await authClient.signUp.email({
@@ -78,19 +85,65 @@ export function AuthForm({ mode }: AuthFormProps) {
         />
       </label>
 
-      <label className="block text-sm font-semibold text-slate-700">
-        Password
-        <input
-          autoComplete={isSignUp ? "new-password" : "current-password"}
-          className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 font-normal outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
-          minLength={8}
-          onChange={(event) => setPassword(event.target.value)}
-          placeholder={isSignUp ? "At least 8 characters" : "Your password"}
-          required
-          type="password"
-          value={password}
-        />
-      </label>
+      <div>
+        <label className="block text-sm font-semibold text-slate-700" htmlFor="auth-password">Password</label>
+        <div className="relative mt-2">
+          <input
+            autoComplete={isSignUp ? "new-password" : "current-password"}
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 pr-16 font-normal outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+            id="auth-password"
+            minLength={8}
+            onChange={(event) => {
+              setPassword(event.target.value);
+              setError(undefined);
+            }}
+            placeholder={isSignUp ? "At least 8 characters" : "Your password"}
+            required
+            type={showPassword ? "text" : "password"}
+            value={password}
+          />
+          <button
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-pressed={showPassword}
+            className="absolute inset-y-0 right-3 text-[11px] font-semibold text-slate-500 hover:text-indigo-600"
+            onClick={() => setShowPassword((current) => !current)}
+            type="button"
+          >
+            {showPassword ? "Hide" : "Show"}
+          </button>
+        </div>
+      </div>
+
+      {isSignUp ? (
+        <div>
+          <label className="block text-sm font-semibold text-slate-700" htmlFor="auth-confirm-password">Confirm password</label>
+          <div className="relative mt-2">
+            <input
+              autoComplete="new-password"
+              className="w-full rounded-xl border border-slate-200 px-4 py-3 pr-16 font-normal outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+              id="auth-confirm-password"
+              minLength={8}
+              onChange={(event) => {
+                setConfirmPassword(event.target.value);
+                setError(undefined);
+              }}
+              placeholder="Enter your password again"
+              required
+              type={showConfirmPassword ? "text" : "password"}
+              value={confirmPassword}
+            />
+            <button
+              aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+              aria-pressed={showConfirmPassword}
+              className="absolute inset-y-0 right-3 text-[11px] font-semibold text-slate-500 hover:text-indigo-600"
+              onClick={() => setShowConfirmPassword((current) => !current)}
+              type="button"
+            >
+              {showConfirmPassword ? "Hide" : "Show"}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {error ? (
         <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700" role="alert">
